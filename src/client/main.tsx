@@ -58,6 +58,7 @@ const stageOrder = [
   "tec_approval", "admin_tec_signature", "tec_review",
   "price_opening", "tac_formation", "tac_formation_document", "tac_review",
   "cfa_approval", "admin_cfa_signature", "ifd_review", "completed",
+  "terminated",
 ];
 const committeeTypeByStage: Record<string, string> = {
   committee_pending: "Technical Scrutiny Committee",
@@ -92,6 +93,32 @@ const formationDocumentStages: Record<
     uploaderRole: "hq",
   },
 };
+const legacyDocumentStageByCategory: Record<string, string> = {
+  department_letter: "committee_pending",
+  requirement: "committee_pending",
+  tsc_formation_support: "tsc_formation_document",
+  tec_formation_support: "tec_formation_document",
+  tac_formation_support: "tac_formation_document",
+  tsc_report: "tsc_report",
+  draft_tender: "tender_draft",
+  final_tender: "ia_tender_review",
+  bid_opening_board_formation: "opening_board_formation",
+  final_acceptance: "ifd_review",
+};
+const documentEventTypeByCategory: Record<string, string> = {
+  department_letter: "project_created",
+  requirement: "demand_submitted",
+  tsc_formation_support: "committee_formation_document",
+  tec_formation_support: "committee_formation_document",
+  tac_formation_support: "committee_formation_document",
+  tsc_report: "tsc_report",
+  draft_tender: "submit_draft_tender",
+  final_tender: "publish_final_tender",
+  bid_opening_board_formation: "bid_opening_board_formation",
+  signed_approval: "signed_approval_upload",
+  final_acceptance: "final_acceptance_upload",
+  approval_rejection: "project_rejected",
+};
 const signedApprovalStages: Record<string, string> = {
   admin_tsc_signature: "AS (IA) TSC formation approval",
   admin_as_signature: "AS (IA) TSC report approval",
@@ -99,6 +126,18 @@ const signedApprovalStages: Record<string, string> = {
   cs_sr_review: "CS/SR offline TSC report approval",
   admin_tec_signature: "SS TEC approval",
   admin_cfa_signature: "CFA fund release approval",
+};
+const rejectionApprovalByStage: Record<
+  string,
+  { role: "as_ia" | "hq"; authority: string }
+> = {
+  tsc_approval: { role: "as_ia", authority: "AS (IA)" },
+  as_review: { role: "as_ia", authority: "AS (IA)" },
+  dgs_ia_review: { role: "hq", authority: "DGS" },
+  cs_sr_review: { role: "hq", authority: "CS/SR" },
+  tec_approval: { role: "hq", authority: "SS" },
+  cfa_approval: { role: "hq", authority: "CFA" },
+  ifd_review: { role: "hq", authority: "IFD" },
 };
 const signedApprovalRoles: Record<string, string> = {
   admin_tsc_signature: "admin",
@@ -141,6 +180,7 @@ const stageNextStep = (stage: string) => {
     admin_cfa_signature: "Next: Admin HQ uploads CFA's signed approval document.",
     ifd_review: "After offline IFD approval, Admin HQ (hq / hq123) uploads the final acceptance document.",
     completed: "Procurement workflow complete.",
+    terminated: "A higher authority rejected the project; no further workflow actions are allowed.",
   };
   return steps[stage] ?? "";
 };
@@ -272,7 +312,9 @@ function App() {
       />
     );
   if (!data) return <div className="loading">Loading workspace…</div>;
-  const active = data.projects.filter((p) => p.stage !== "completed").length;
+  const active = data.projects.filter(
+    (p) => !["completed", "terminated"].includes(p.stage),
+  ).length;
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -359,7 +401,7 @@ function App() {
             <div className="eyebrow">OPERATIONS / {view.toUpperCase()}</div>
             <h1>
               {view === "overview"
-                ? "Good day, " + user.name.split(" ")[0]
+                ? "Hello " + user.name.split(" ")[0]
                 : view === "projects"
                   ? "All projects"
                   : view === "workflow"
@@ -462,10 +504,14 @@ function Overview({
   const bids = data.projects.reduce((n, p) => n + p.bids.length, 0);
   return (
     <>
-      <section className="metric-grid">
+      <section className="metric-grid overview-metric-grid">
         <Metric
           label="Active projects"
-          value={data.projects.filter((p) => p.stage !== "completed").length}
+          value={
+            data.projects.filter(
+              (p) => !["completed", "terminated"].includes(p.stage),
+            ).length
+          }
           detail="Across all workstreams"
         />
         <Metric
@@ -484,6 +530,12 @@ function Overview({
           label="Completed"
           value={data.projects.filter((p) => p.stage === "completed").length}
           detail="Successfully closed"
+        />
+        <Metric
+          label="Terminated"
+          value={data.projects.filter((p) => p.stage === "terminated").length}
+          detail="Rejected by authority"
+          tone="orange"
         />
       </section>
       <section className="section-head">
@@ -559,16 +611,25 @@ function ProjectCard({
   onOpen: (p: Project) => void;
   systemTime: number;
 }) {
-  const percent = Math.round(
-    (Math.max(0, stageOrder.indexOf(project.stage)) /
-      Math.max(1, stageOrder.length - 1)) *
-      100,
-  );
+  const percent =
+    project.stage === "completed" || project.stage === "terminated"
+      ? 100
+      : Math.round(
+          (Math.max(0, stageOrder.indexOf(project.stage)) /
+            Math.max(1, stageOrder.length - 1)) *
+            100,
+        );
   return (
     <article className="project-card">
       <div className="card-top">
         <span className="project-id">{project.id}</span>
-        <span className="pill">{percent}% complete</span>
+        <span
+          className={`pill${project.stage === "terminated" ? " pill-terminated" : ""}`}
+        >
+          {project.stage === "terminated"
+            ? "Project terminated"
+            : `${percent}% complete`}
+        </span>
       </div>
       <h3>{project.title}</h3>
       <p className="subtle clamp">{project.description}</p>
@@ -847,10 +908,10 @@ function ProjectDrawer({
   const [tacSpecifications, setTacSpecifications] = useState("");
   const [fundReference, setFundReference] = useState("");
   const [fundAmount, setFundAmount] = useState("");
-  const [fundRemarks, setFundRemarks] = useState("");
-  const [trailOpen, setTrailOpen] = useState(true);
+  const [rejectionFile, setRejectionFile] = useState<File | null>(null);
   const reportInput = useRef<HTMLInputElement>(null);
   const workflowInput = useRef<HTMLInputElement>(null);
+  const rejectionInput = useRef<HTMLInputElement>(null);
   const [committeeForm, setCommitteeForm] = useState({
     chairmanId: data.people[0]?.id ?? "",
     memberIds: data.people.slice(0, 3).map((person) => person.id),
@@ -860,6 +921,7 @@ function ProjectDrawer({
   const index = data.stages.findIndex((s) => s.id === project.stage);
   const committeeType = committeeTypeByStage[project.stage];
   const formationDocument = formationDocumentStages[project.stage];
+  const rejectionApproval = rejectionApprovalByStage[project.stage];
   const committee = data.committees
     .filter(
       (item) =>
@@ -874,6 +936,15 @@ function ProjectDrawer({
     user.role === "admin" &&
     project.stage === "committee_pending" &&
     committee?.status === "changes_requested";
+  const hasInlineRejection =
+    (project.stage === "tsc_approval" &&
+      user.role === "as_ia" &&
+      committee?.status === "pending") ||
+    (project.stage === "tec_approval" &&
+      user.role === "hq" &&
+      committee?.status === "pending") ||
+    (project.stage === "as_review" && user.role === "as_ia") ||
+    (project.stage === "cfa_approval" && user.role === "hq");
   useEffect(() => {
     if (isTscRevision && committee) {
       setCommitteeForm({
@@ -887,11 +958,126 @@ function ProjectDrawer({
   const cfaRelease = project.workflowRecords.find(
     (record) => record.kind === "cfa_fund_release",
   );
+  const rejectionRecord = project.workflowRecords.find(
+    (record) => record.kind === "rejection",
+  );
+  const rejectedAtStage =
+    typeof rejectionRecord?.data.stage === "string"
+      ? rejectionRecord.data.stage
+      : "";
+  const timelineEndIndex =
+    project.stage === "terminated"
+      ? data.stages.findIndex((stage) => stage.id === rejectedAtStage)
+      : data.stages.findIndex((stage) => stage.id === project.stage);
+  const timelineStages = data.stages.filter(
+    (stage, stageIndex) =>
+      stage.id !== "terminated" && stageIndex <= timelineEndIndex,
+  );
+  if (
+    project.stage === "terminated" &&
+    !timelineStages.some((stage) => stage.id === "terminated")
+  ) {
+    const terminatedStage = data.stages.find(
+      (stage) => stage.id === "terminated",
+    );
+    if (terminatedStage) timelineStages.push(terminatedStage);
+  }
+  const timelineStageIds = new Set(data.stages.map((stage) => stage.id));
+  const rejectionDocumentIds = new Set(
+    project.workflowRecords
+      .filter((record) => record.kind === "rejection")
+      .map((record) => record.data.documentId)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  const attachedDocumentIds = new Set(rejectionDocumentIds);
+  const documentsByEvent = new Map<
+    string,
+    (typeof project.documents)[number][]
+  >();
+  const stageByEventId = new Map<string, string>();
+  for (const document of project.documents) {
+    if (rejectionDocumentIds.has(document.id)) continue;
+    const eventType = documentEventTypeByCategory[document.category];
+    const documentTime = Date.parse(document.at);
+    const candidates = project.events
+      .filter(
+        (event) =>
+          event.actor.id === document.uploadedBy.id &&
+          (!document.stage || !event.stage || event.stage === document.stage) &&
+          !documentsByEvent.has(event.id) &&
+          Math.abs(Date.parse(event.at) - documentTime) <= 120_000,
+      )
+      .sort(
+        (a, b) =>
+          Math.abs(Date.parse(a.at) - documentTime) -
+          Math.abs(Date.parse(b.at) - documentTime),
+      );
+    const matchingEvent = eventType
+      ? candidates.find((event) => event.type === eventType)
+      : candidates[0];
+    if (!matchingEvent) continue;
+    documentsByEvent.set(matchingEvent.id, [document]);
+    attachedDocumentIds.add(document.id);
+    const documentStage =
+      document.stage || legacyDocumentStageByCategory[document.category];
+    if (!matchingEvent.stage && documentStage)
+      stageByEventId.set(matchingEvent.id, documentStage);
+  }
+  const stageTimeline = timelineStages.map((stage, index) => {
+    const documents = project.documents.filter(
+      (document) =>
+        (document.stage || legacyDocumentStageByCategory[document.category]) ===
+        stage.id,
+    );
+    const queries = project.queries.filter(
+      (item) => item.stage === stage.id,
+    );
+    const events = project.events.filter(
+      (item) => (item.stage || stageByEventId.get(item.id)) === stage.id,
+    );
+    const rejections = project.workflowRecords.filter(
+      (record) =>
+        record.kind === "rejection" && record.data.stage === stage.id,
+    );
+    return {
+      stage,
+      index,
+      current: stage.id === project.stage,
+      documents: documents.filter(
+        (document) => !attachedDocumentIds.has(document.id),
+      ),
+      queries,
+      events,
+      rejections,
+    };
+  });
+  const earlierDocuments = project.documents.filter(
+    (document) =>
+      !attachedDocumentIds.has(document.id) &&
+      !timelineStageIds.has(
+        document.stage || legacyDocumentStageByCategory[document.category] || "",
+      ),
+  );
+  const earlierQueries = project.queries.filter(
+    (item) => !timelineStageIds.has(item.stage),
+  );
+  const earlierEvents = project.events.filter(
+    (item) =>
+      !timelineStageIds.has(item.stage || stageByEventId.get(item.id) || ""),
+  );
+  const hasEarlierActivity =
+    earlierDocuments.length + earlierQueries.length + earlierEvents.length > 0;
+  const clearDecisionDraft = () => {
+    setDecisionRemarks("");
+    setRejectionFile(null);
+    if (rejectionInput.current) rejectionInput.current.value = "";
+  };
   const submit = async (url: string, body: object) => {
     try {
       await api(url, { method: "POST", body: JSON.stringify(body) });
       setNote("");
       setQuery("");
+      clearDecisionDraft();
       await onRefresh();
     } catch (e) {
       setError((e as Error).message);
@@ -919,6 +1105,7 @@ function ProjectDrawer({
       });
       setError("");
       setQuery("");
+      clearDecisionDraft();
       await onRefresh();
       if (category === "tsc_report") {
         if (reportInput.current) reportInput.current.value = "";
@@ -945,7 +1132,7 @@ function ProjectDrawer({
         body: JSON.stringify({ action, data: actionData }),
       });
       setError("");
-      setDecisionRemarks("");
+      clearDecisionDraft();
       await onRefresh();
     } catch (e) {
       setError((e as Error).message);
@@ -955,6 +1142,46 @@ function ProjectDrawer({
     if (!file) throw new Error("Select a PDF to upload");
     return pdfToDataUrl(file);
   };
+  const submitRejection = async () => {
+    try {
+      const content = await readPdf(rejectionFile ?? undefined);
+      await api(`/api/projects/${project.id}/reject`, {
+        method: "POST",
+        body: JSON.stringify({
+          note: decisionRemarks,
+          name: rejectionFile?.name ?? "",
+          content,
+        }),
+      });
+      setError("");
+      clearDecisionDraft();
+      await onRefresh();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+  const rejectionPdfField = (
+    <label>
+      Rejection PDF (required only for Reject)
+      <input
+        ref={rejectionInput}
+        type="file"
+        accept="application/pdf,.pdf"
+        onChange={(event) =>
+          setRejectionFile(event.target.files?.[0] ?? null)
+        }
+      />
+    </label>
+  );
+  const rejectButton = (
+    <button
+      className="button danger"
+      disabled={decisionRemarks.trim().length < 2 || !rejectionFile}
+      onClick={submitRejection}
+    >
+      Reject
+    </button>
+  );
   const submitCommittee = async () => {
     try {
       await api(`/api/projects/${project.id}/committees`, {
@@ -1002,96 +1229,29 @@ function ProjectDrawer({
             Stage {index + 1} of {data.stages.length}
           </small>
         </div>
-        {user.role !== "vendor" || project.stage === "bid_submission" ? (
-          <section className="drawer-section trail-section">
-            <button
-              className="trail-toggle"
-              aria-expanded={trailOpen}
-              onClick={() => setTrailOpen(!trailOpen)}
-            >
-              <span>Trail</span>
-              <span className="trail-toggle-icon" aria-hidden="true">
-                {trailOpen ? "-" : "+"}
-              </span>
-            </button>
-            {trailOpen && (
-              <>
-                {project.documents.length > 0 && (
-                  <div className="trail-block">
-                    <h4>Documents</h4>
-                    {project.documents.map((doc) => (
-                      <div className="trail-item" key={doc.id}>
-                        <div>
-                          <b>{doc.name}</b>
-                          <small>
-                            {doc.category} · {new Date(doc.at).toLocaleString()}
-                          </small>
-                        </div>
-                        <a href={doc.content} target="_blank" rel="noreferrer">
-                          View
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {project.queries.length > 0 && (
-                  <div className="trail-block">
-                    <h4>Queries</h4>
-                    {project.queries.map((q) => (
-                      <div className="query" key={q.id}>
-                        <b>{q.actor.name}</b>
-                        <small>{q.status}</small>
-                        <p>{q.text}</p>
-                        {q.replies.map((r) => (
-                          <div className="reply" key={r.id}>
-                            <b>{r.actor.name}</b>
-                            <p>{r.text}</p>
-                          </div>
-                        ))}
-                        <div className="reply-row">
-                          <input
-                            value={reply[q.id] ?? ""}
-                            onChange={(e) =>
-                              setReply({ ...reply, [q.id]: e.target.value })
-                            }
-                            placeholder="Reply to query…"
-                          />
-                          <button
-                            className="button secondary"
-                            onClick={() =>
-                              submit(
-                                `/api/projects/${project.id}/queries/${q.id}/replies`,
-                                { text: reply[q.id] },
-                              )
-                            }
-                          >
-                            Reply
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="reply-row">
-                  <input
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Raise a new query…"
-                  />
-                  <button
-                    className="button secondary"
-                    onClick={() =>
-                      submit(`/api/projects/${project.id}/queries`, { text: query })
-                    }
-                  >
-                    Ask
-                  </button>
-                </div>
-              </>
-            )}
-          </section>
-        ) : null}
         {error && <div className="error">{error}</div>}
+        {rejectionApproval &&
+          user.role === rejectionApproval.role &&
+          !hasInlineRejection && (
+          <section className="action-box rejection-box">
+            <span className="eyebrow">AUTHORITY DECISION</span>
+            <h3>Reject at {rejectionApproval.authority} approval</h3>
+            <p className="subtle">
+              Add the authority's remarks and signed PDF. Rejecting terminates
+              the project and prevents further workflow actions.
+            </p>
+            <label>
+              Remarks
+              <textarea
+                value={decisionRemarks}
+                onChange={(event) => setDecisionRemarks(event.target.value)}
+                placeholder="Reason provided by the approving authority…"
+              />
+            </label>
+            {rejectionPdfField}
+            {rejectButton}
+          </section>
+        )}
         {((user.role === "admin" && project.stage === "committee_pending") ||
           (user.role === "hq" &&
             ["tec_formation", "tac_formation"].includes(project.stage))) &&
@@ -1295,6 +1455,7 @@ function ProjectDrawer({
               onChange={(e) => setDecisionRemarks(e.target.value)}
               placeholder="SS approval remarks or query for Admin HQ…"
             />
+            {rejectionPdfField}
             <div className="action-row">
               <button
                 className="button secondary"
@@ -1316,8 +1477,9 @@ function ProjectDrawer({
                   })
                 }
               >
-                Approve TEC
+                Accept
               </button>
+              {rejectButton}
             </div>
           </section>
         )}
@@ -1336,6 +1498,7 @@ function ProjectDrawer({
                 onChange={(e) => setDecisionRemarks(e.target.value)}
                 placeholder="Approval remarks or query for Admin…"
               />
+              {rejectionPdfField}
               <div className="action-row">
                 <button
                   className="button secondary"
@@ -1368,8 +1531,9 @@ function ProjectDrawer({
                     })
                   }
                 >
-                  Approve TSC as final committee
+                  Accept
                 </button>
+                {rejectButton}
               </div>
             </section>
           )}
@@ -1464,13 +1628,15 @@ function ProjectDrawer({
               onChange={(e) => setDecisionRemarks(e.target.value)}
               placeholder="Approval remarks or query…"
             />
+            {rejectionPdfField}
             <div className="action-row">
               <button className="button secondary" onClick={() => submit(`/api/projects/${project.id}/as-decision`, { action: "query", remarks: decisionRemarks })}>
                 Raise query
               </button>
               <button className="button primary" onClick={() => submit(`/api/projects/${project.id}/as-decision`, { action: "approve", remarks: decisionRemarks })}>
-                Approve report
+                Accept
               </button>
+              {rejectButton}
             </div>
           </section>
         )}
@@ -1627,13 +1793,19 @@ function ProjectDrawer({
           </section>
         )}
         {user.role === "hq" && project.stage === "cfa_approval" && (
-          <section className="action-box">
+          <section className="action-box approval-box">
             <span className="eyebrow">OFFLINE CFA / IFD APPROVAL</span>
             <h3>Record CFA's offline fund release through IFD</h3>
             <label>Release reference<input value={fundReference} onChange={(e) => setFundReference(e.target.value)} /></label>
             <label>Amount approved<input type="number" min="0.01" value={fundAmount} onChange={(e) => setFundAmount(e.target.value)} /></label>
-            <textarea value={fundRemarks} onChange={(e) => setFundRemarks(e.target.value)} placeholder="Offline CFA approval and IFD reference details…" />
-            <button className="button primary" onClick={() => submitWorkflowAction("cfa_release_funds", { reference: fundReference, amount: fundAmount, remarks: fundRemarks })}>Record offline approval</button>
+            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="CFA approval remarks or rejection reason…" />
+            {rejectionPdfField}
+            <div className="action-row">
+              <button className="button primary" onClick={() => submitWorkflowAction("cfa_release_funds", { reference: fundReference, amount: fundAmount, remarks: decisionRemarks })}>
+                Accept
+              </button>
+              {rejectButton}
+            </div>
           </section>
         )}
         {user.role === "hq" && project.stage === "ifd_review" && (
@@ -1651,21 +1823,236 @@ function ProjectDrawer({
             </button>
           </section>
         )}
-        <section className="drawer-section">
-          <h3>Activity</h3>
-          {project.events.map((e) => (
-            <div className="event" key={e.id}>
-              <span className="event-dot" />
-              <div>
-                <b>{e.text}</b>
-                <small>
-                  {e.actor.name} · {new Date(e.at).toLocaleString()}
-                </small>
-              </div>
-            </div>
-          ))}
+        <section className="drawer-section trail-section stage-timeline-section">
+          <h3>Trail</h3>
+          <ol className="stage-timeline">
+            {stageTimeline.map((group) => {
+              const hasItems =
+                group.events.length +
+                  group.documents.length +
+                  group.queries.length +
+                  group.rejections.length >
+                0;
+              return (
+                <li
+                  className={`stage-timeline-item${group.current ? " is-current" : ""}`}
+                  key={group.stage.id}
+                >
+                  <details open={group.current}>
+                    <summary>
+                      <span className="timeline-node">{group.index + 1}</span>
+                      <span className="timeline-stage-title">
+                        {group.stage.label}
+                      </span>
+                      {group.current && (
+                        <span className="timeline-stage-state">Current</span>
+                      )}
+                      {group.rejections.length > 0 && (
+                        <span className="timeline-stage-state is-rejected">
+                          Rejected
+                        </span>
+                      )}
+                    </summary>
+                    <div className="stage-timeline-content">
+                      <ul className="stage-timeline-list">
+                        {group.events.map((event) => (
+                          <li key={event.id}>
+                            <strong>{event.text}</strong>
+                            <small>
+                              {event.actor.name} ·{" "}
+                              {new Date(event.at).toLocaleString()}
+                            </small>
+                            {documentsByEvent
+                              .get(event.id)
+                              ?.map((document) => (
+                                <DocumentAttachment
+                                  key={document.id}
+                                  document={document}
+                                />
+                              ))}
+                          </li>
+                        ))}
+                        {group.documents.map((document) => (
+                          <li key={document.id}>
+                            <DocumentAttachment document={document} />
+                          </li>
+                        ))}
+                        {group.rejections.map((record) => (
+                          <li className="timeline-rejection-note" key={record.id}>
+                            <strong>
+                              {String(record.data.authority)} rejection note
+                            </strong>
+                            <p>{String(record.data.note)}</p>
+                            {project.documents
+                              .filter(
+                                (document) =>
+                                  document.id === record.data.documentId,
+                              )
+                              .map((document) => (
+                                <DocumentAttachment
+                                  key={document.id}
+                                  document={document}
+                                />
+                              ))}
+                          </li>
+                        ))}
+                        {group.queries.map((item) => (
+                          <li key={item.id}>
+                            <div className="timeline-query">
+                              <div>
+                                <strong>{item.actor.name} · Query</strong>
+                                <small>
+                                  {item.status} ·{" "}
+                                  {new Date(item.at).toLocaleString()}
+                                </small>
+                                <p>{item.text}</p>
+                              </div>
+                              {item.replies.length > 0 && (
+                                <ul className="timeline-replies">
+                                  {item.replies.map((response) => (
+                                    <li key={response.id}>
+                                      <strong>{response.actor.name}</strong>
+                                      <p>{response.text}</p>
+                                      <small>
+                                        {new Date(
+                                          response.at,
+                                        ).toLocaleString()}
+                                      </small>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              {project.stage !== "terminated" && (
+                                <div className="reply-row">
+                                  <input
+                                    value={reply[item.id] ?? ""}
+                                    onChange={(event) =>
+                                      setReply({
+                                        ...reply,
+                                        [item.id]: event.target.value,
+                                      })
+                                    }
+                                    placeholder="Reply to query…"
+                                  />
+                                  <button
+                                    className="button secondary"
+                                    onClick={() =>
+                                      submit(
+                                        `/api/projects/${project.id}/queries/${item.id}/replies`,
+                                        { text: reply[item.id] },
+                                      )
+                                    }
+                                  >
+                                    Reply
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                        {group.current &&
+                          !["terminated", "completed"].includes(
+                            project.stage,
+                          ) &&
+                          user.role !== "vendor" && (
+                            <li>
+                              <div className="reply-row stage-query-form">
+                                <input
+                                  value={query}
+                                  onChange={(event) =>
+                                    setQuery(event.target.value)
+                                  }
+                                  placeholder="Raise a query at this stage…"
+                                />
+                                <button
+                                  className="button secondary"
+                                  disabled={query.trim().length < 2}
+                                  onClick={() =>
+                                    submit(
+                                      `/api/projects/${project.id}/queries`,
+                                      { text: query },
+                                    )
+                                  }
+                                >
+                                  Ask
+                                </button>
+                              </div>
+                            </li>
+                          )}
+                        {!hasItems &&
+                          !(
+                            group.current &&
+                            !["terminated", "completed"].includes(
+                              project.stage,
+                            )
+                          ) && <li className="timeline-empty">No activity recorded.</li>}
+                      </ul>
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
+          </ol>
+          {hasEarlierActivity && (
+            <details className="earlier-activity">
+              <summary>Earlier records without a stage tag</summary>
+              <ul className="stage-timeline-list">
+                {earlierEvents.map((event) => (
+                  <li key={event.id}>
+                    <strong>{event.text}</strong>
+                    <small>
+                      {event.actor.name} · {new Date(event.at).toLocaleString()}
+                    </small>
+                    {documentsByEvent.get(event.id)?.map((document) => (
+                      <DocumentAttachment
+                        key={document.id}
+                        document={document}
+                      />
+                    ))}
+                  </li>
+                ))}
+                {earlierDocuments.map((document) => (
+                  <li key={document.id}>
+                    <DocumentAttachment document={document} />
+                  </li>
+                ))}
+                {earlierQueries.map((item) => (
+                  <li key={item.id}>
+                    <strong>{item.actor.name} · Query</strong>
+                    <p>{item.text}</p>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </section>
       </aside>
+    </div>
+  );
+}
+function DocumentAttachment({
+  document,
+}: {
+  document: Project["documents"][number];
+}) {
+  return (
+    <div className="timeline-document">
+      <div>
+        <span className="timeline-document-label">Attached document</span>
+        <strong>{document.name}</strong>
+        <small>
+          {document.category} · {document.uploadedBy.name} ·{" "}
+          {new Date(document.at).toLocaleString()}
+        </small>
+      </div>
+      <a
+        className="button secondary document-view-button"
+        href={document.content}
+        target="_blank"
+        rel="noreferrer"
+      >
+        View document
+      </a>
     </div>
   );
 }

@@ -2,9 +2,16 @@ ProcureFlow - Procurement Workflow Specification
 
 The application shall guide each procurement through role-restricted, sequential
 stages. Every action shall record its actor, timestamp and remarks. Queries shall
-appear in the project Trail, not as independent workflow stages. After a stage
-is completed, the project shall show the next role and a sign-in hint only when
-that role has an application login.
+appear inside their stage in the project Trail, not as independent workflow
+stages. Uploaded documents shall appear beneath their matching Trail message
+with a view action. After a stage is completed, the project shall show the next role
+and a sign-in hint only when that role has an application login. An approval
+rejection requires a note and PDF, terminates the project, and blocks further
+workflow actions.
+
+At approval gates, AS (IA) records its own decision; Admin HQ records decisions
+made offline by DGS, CS/SR, SS, CFA or IFD. The authorized online role may reject
+by entering the authority's note and uploading its PDF.
 
 1. Department letter and project creation
    - Department gives Admin IA the procurement demand letter offline.

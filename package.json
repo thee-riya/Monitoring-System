@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"tsx watch src/server/index.ts\" \"vite\"",
     "build": "tsc && vite build",
-    "start": "node dist/server/index.js",
+    "start": "npm run build && node dist/server/index.js",
     "check": "tsc --noEmit"
   },
   "dependencies": {

@@ -6,9 +6,8 @@ ProcureFlow is a modern, self-hosted, LAN-only tender and approval workflow appl
 
 1. Install Node.js 20 or newer.
 2. Install dependencies with `npm install`.
-3. Build the production bundle with `npm run build`.
-4. Start the LAN server with `npm start`.
-5. On the host, open `http://localhost:3000`. Other LAN devices can use `http://<host-ip>:3000`.
+3. Start the LAN server with `npm start`; it builds the current production bundle before starting.
+4. On the host, open `http://localhost:3000`. Other LAN devices can use `http://<host-ip>:3000`.
 
 For development, use `npm run dev`. Vite runs the frontend at port `5173` and proxies `/api` requests to the TypeScript server at port `3000`.
 
@@ -47,12 +46,13 @@ Vendor queries, replies, and technical/financial bid submission are offline and 
 - The TEC approval gate records SS's offline approval or query; Admin HQ records the decision and uploads SS's signed approval. TEC technical qualifications and its top-three financial evaluation, TAC's award recommendation, bid receipt and fund release are persisted as workflow records.
 - CFA and IFD approvals are offline and have no login; Admin HQ records the release, uploads the signed CFA approval and then uploads the final acceptance PDF after IFD approval.
 - Admin-only report routing, designated reviewer decisions, and private stage queries.
+- At approval gates, AS (IA) decides through its login; Admin HQ records offline decisions from DGS, CS/SR, SS, CFA and IFD. Rejection requires a note and PDF, terminates the project, and blocks further workflow actions.
 - Vendor query/reply and bid submission are intentionally offline and not implemented.
-- Activity events retain actor, timestamp and action details; the project Trail shows queries and history.
+- Activity events retain actor, timestamp and action details. The project workspace groups activities, queries, replies and PDFs beneath expandable stage headings connected as a vertical timeline.
 
 ## Frontend behavior
 
-The browser starts at the login screen, establishes a cookie session with the API, and loads the bootstrap payload containing users, stages, projects, audit events, queries and workflow records. The dashboard summarizes the current workload. Opening a project shows a side drawer where an authorized role can perform its stage-specific action, raise or answer an internal query, and review the audit history. Vendor query and bid submission are offline. After every mutation the client refreshes project data from the server so the UI remains consistent with SQLite.
+The browser starts at the login screen, establishes a cookie session with the API, and loads the bootstrap payload containing users, stages, projects, audit events, queries and workflow records. The dashboard summarizes the current workload. Opening a project shows a side drawer where an authorized role can perform its stage-specific action, raise or answer an internal query, and review a collapsible, stage-linked Trail. Uploaded PDFs appear below their matching activity message with a View document button; queries and replies remain within their stage. Vendor query and bid submission are offline. After every mutation the client refreshes project data from the server so the UI remains consistent with SQLite.
 
 The visual layer includes page-entry transitions, staggered metric and project-card reveals, hover elevation, animated progress bars, navigation movement, drawer/dialog transitions, activity-list reveals, and a live system-status pulse. All motion is disabled or reduced automatically when the browser's `prefers-reduced-motion` setting is enabled.
 
@@ -101,7 +101,7 @@ The application is intended for a trusted departmental LAN. It uses local SQLite
 5. **Tender documents:** Admin HQ uploads the draft tender PDF and sends it only to Admin (IA) for review; Admin (IA) may send suggestions; Admin HQ uploads and publishes the final tender PDF with a deadline, issues it and records bid receipt. After publication, the due date is displayed while the tender is being issued and bids are being received, with a red overdue reminder after the deadline passes according to the system clock.
 6. **Committee evaluation:** Admin HQ uploads confirmation of offline Bid Opening Board formation and supporting documents after TEC/TAC formation. SS approves or queries the TEC offline; Admin HQ records the decision and uploads SS's signed approval PDF before recording TEC's offline technical and financial reports. Admin HQ also records TAC's offline recommendation.
 7. **Funding:** CFA approves fund release through IFD offline and has no login. Admin HQ records the release, uploads CFA's signed approval PDF, then after IFD approval uploads the final acceptance PDF to complete the project.
-8. **Sequential workflow:** every transition must target the declared next stage. Arbitrary target stages and skipped handoffs are rejected.
+8. **Sequential workflow:** every transition must target the declared next stage. Arbitrary target stages and skipped handoffs are rejected. At an approval gate, the authorized role can reject with a note and PDF; this moves the project to **Project terminated** and prevents any further project actions.
 9. **Private conversations:** a query is visible to its sender and designated responder for that stage. During HQ's DGS and CS/SR approval handoffs, Admin (IA) is a designated responder to HQ's queries and can reply in the Trail. Other users cannot read or reply to the query.
 10. **Activity transparency:** project activity events are visible to all authenticated users, including actor and timestamp.
 11. **Validation:** malformed requests, incomplete committee composition, invalid amounts and unauthorized actions return explicit errors.
@@ -129,9 +129,10 @@ Start the application and sign in as Admin (IA) (`admin / admin123`) to select *
 ```bash
 npm install
 npm run check
-npm run build
 npm start
 ```
+
+`npm start` rebuilds `dist/` before launching so it serves the latest source changes.
 
 The application is at `http://localhost:3000`; other LAN devices can use `http://<host-ip>:3000`. Follow the steps in order, signing in only as one of the three roles with an application login:
 

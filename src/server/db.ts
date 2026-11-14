@@ -34,6 +34,7 @@ export const stages = [
   ["admin_cfa_signature", "Admin HQ uploads signed CFA approval"],
   ["ifd_review", "Admin HQ uploads final acceptance document"],
   ["completed", "Completed"],
+  ["terminated", "Project terminated"],
 ] as const;
 
 export const users = [
@@ -141,7 +142,8 @@ db.exec(`
   );
   CREATE TABLE IF NOT EXISTS events (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, type TEXT NOT NULL,
-    actor_id TEXT NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL
+    actor_id TEXT NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS queries (
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, actor_id TEXT NOT NULL,
@@ -188,7 +190,7 @@ db.exec(`
     id TEXT PRIMARY KEY, project_id TEXT NOT NULL, category TEXT NOT NULL,
     name TEXT NOT NULL, storage_path TEXT NOT NULL, uploaded_by TEXT NOT NULL, at TEXT NOT NULL,
     mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
-    content TEXT NOT NULL DEFAULT ''
+    content TEXT NOT NULL DEFAULT '', stage TEXT NOT NULL DEFAULT ''
   );
   CREATE TABLE IF NOT EXISTS vendors (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, registration_no TEXT NOT NULL UNIQUE,
@@ -229,6 +231,26 @@ if (!queryColumns.some((column) => column.name === "stage"))
   db.exec(
     "ALTER TABLE queries ADD COLUMN stage TEXT NOT NULL DEFAULT 'general'",
   );
+for (const table of ["events", "documents"]) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+    name: string;
+  }>;
+  if (!columns.some((column) => column.name === "stage"))
+    db.exec(`ALTER TABLE ${table} ADD COLUMN stage TEXT NOT NULL DEFAULT ''`);
+}
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS documents_set_stage
+  AFTER INSERT ON documents
+  WHEN NEW.stage = ''
+  BEGIN
+    UPDATE documents
+    SET stage = COALESCE(
+      (SELECT stage FROM projects WHERE id = NEW.project_id),
+      ''
+    )
+    WHERE id = NEW.id;
+  END;
+`);
 
 const now = () => new Date().toISOString();
 const uid = (prefix: string) =>
@@ -406,14 +428,24 @@ export function addEvent(
   type: string,
   actorId: string,
   text: string,
+  stageOverride?: string,
 ) {
-  db.prepare("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)").run(
+  const stage =
+    stageOverride ??
+    (db.prepare("SELECT stage FROM projects WHERE id = ?").get(projectId) as
+      | { stage: string }
+      | undefined)?.stage ??
+    "";
+  db.prepare(
+    "INSERT INTO events (id, project_id, type, actor_id, text, at, stage) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(
     uid("evt"),
     projectId,
     type,
     actorId,
     text,
     now(),
+    stage,
   );
 }
 export function projectView(row: any, viewerId?: string) {
@@ -445,6 +477,7 @@ export function projectView(row: any, viewerId?: string) {
     .map((doc: any) => ({
       id: doc.id,
       category: doc.category,
+      stage: doc.stage,
       name: doc.name,
       mimeType: doc.mime_type,
       content: doc.content,
@@ -457,6 +490,7 @@ export function projectView(row: any, viewerId?: string) {
     .map((e: any) => ({
       id: e.id,
       type: e.type,
+      stage: e.stage,
       actor: safeUser(users.find((u) => u.id === e.actor_id))!,
       text: e.text,
       at: e.at,
@@ -479,6 +513,7 @@ export function projectView(row: any, viewerId?: string) {
       text: q.text,
       status: q.status,
       at: q.at,
+      stage: q.stage,
       replies: db
         .prepare(
           "SELECT * FROM replies WHERE query_id = ? ORDER BY at",

@@ -21,6 +21,7 @@ export interface User {
 export interface Event {
   id: string;
   type: string;
+  stage: Stage;
   actor: User;
   text: string;
   at: string;
@@ -37,11 +38,13 @@ export interface Query {
   text: string;
   status: string;
   at: string;
+  stage: Stage;
   replies: Reply[];
 }
 export interface DocumentRecord {
   id: string;
   category: string;
+  stage: Stage;
   name: string;
   mimeType: string;
   content: string;

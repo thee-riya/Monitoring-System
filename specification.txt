@@ -1,0 +1,113 @@
+ProcureFlow - Procurement Workflow Specification
+
+The application shall guide each procurement through role-restricted, sequential
+stages. Every action shall record its actor, timestamp and remarks. Queries shall
+appear in the project Trail, not as independent workflow stages. After a stage
+is completed, the project shall show the next role and a small sign-in hint.
+
+1. Department demand
+   - Department raises a procurement demand with a title, description, estimated
+     value and deadline.
+   - A requirement PDF may be attached, but is optional.
+   - Admin reviews and accepts the demand.
+   - Only Department can raise a demand using **New project**. Admin cannot
+     create or raise a procurement demand.
+   - Admin only reviews and accepts the Department's demand; Admin cannot attach
+     or upload a requirement PDF.
+
+2. TSC formation
+   - Admin IA forms a TSC with exactly three unique members and chooses one member
+     as chairperson.
+   - Once submitted, the project advances to the TSC report stage; no separate
+     approval stage is required for TSC formation.
+
+3. TSC specifications report
+   - TSC prepares the specifications report and sends it to Admin IA.
+
+4. AS (IA) review
+   - Admin IA sends the TSC report to AS (IA) for approval.
+   - AS (IA) may approve, return or query the report; the response goes back to
+     Admin.
+   - AS (IA) signs in with username AS and password AS123.
+
+5. Second review routing
+   - Admin routes the report to Admin HQ (headquarters) for DGS review.
+   - Admin HQ forwards the TSC report to DGS for review.
+   - DGS reviews the report and may raise a query for Admin HQ to answer.
+     The report remains with DGS until DGS approves it.
+   - On approval, DGS sends the report back to Admin HQ for draft tender
+     preparation.
+   - DGS signs in with username dgs and password dgs123.
+
+6. Draft tender
+   - Admin HQ prepares and uploads the draft tender as a PDF and sends it to IA
+     (department).
+
+7. Final tender
+   - IA may revise the draft, uploads the final tender PDF and publishes it
+     with a deadline.
+   - Admin sends the final tender to participating vendors.
+
+8. Vendor activity (offline; do not implement)
+   - Vendors receive the final tender.
+   - Vendor queries and replies, and submission of technical and financial bids,
+     are handled offline.
+
+9. Bid receipt
+    - After the tender deadline, Admin records that technical and financial
+      bids have been received and the number of bids.
+
+10. Bid Opening Board formation
+    - Admin forms a three-member Bid Opening Board with one chairperson.
+
+11. Technical bid opening (offline; no application stage)
+    - After the Bid Opening Board is formed, it opens the technical bids offline.
+    - The next application stage is TEC formation.
+
+12. TEC formation
+    - Admin forms a three-member Technical Evaluation Committee (TEC) with one
+      chairperson and sends it to SS for approval.
+
+13. SS approval
+    - SS may query or approve the proposed TEC.
+
+14. Technical evaluation
+    - TEC evaluates the technical bids, may raise internal queries, determines
+      which vendors are technically qualified, and sends its report to Admin IA.
+
+15. X committee formation
+    - Admin forms a three-member X committee with one chairperson.
+
+16. Financial evaluation
+    - X opens financial bids for vendors qualified by TEC, selects the top
+      three vendors and sends its report to Admin IA.
+
+17. TAC formation
+    - Admin forms a three-member TAC with one chairperson.
+    - At least one TAC member must be from IA, the department raising the
+      requirement.
+
+18. TAC recommendation
+    - TAC reviews the TEC and X reports, selects the final vendor, and sends
+      Admin its report with the vendor, price bid and technical specifications.
+
+19. CFA and IFD
+    - CFA releases funds through IFD.
+    - IA records IFD confirmation and the project is marked Completed.
+
+Roles and demo accounts
+  Department: department / department123
+  Admin: admin / admin123
+  TSC and committee member: tsc / tsc123
+  Technical Evaluation Committee (TEC): tec / tec123
+  Tender Acceptance Committee (TAC): tac / tac123
+  AS (IA) report reviewer: AS / AS123
+  DGS report reviewer: dgs / dgs123
+  IA Wing: ia / ia123
+  HQ: hq / hq123
+  SS: superadmin / admin123
+  CFA: cfa / cfa123
+
+Only Department can create a project through **New project**. All new projects
+begin at the department demand stage, where Admin reviews and accepts the demand.
+The requirement PDF upload is optional and appears only for the Department.

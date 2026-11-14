@@ -3,50 +3,62 @@ ProcureFlow - Procurement Workflow Specification
 The application shall guide each procurement through role-restricted, sequential
 stages. Every action shall record its actor, timestamp and remarks. Queries shall
 appear in the project Trail, not as independent workflow stages. After a stage
-is completed, the project shall show the next role and a small sign-in hint.
+is completed, the project shall show the next role and a sign-in hint only when
+that role has an application login.
 
-1. Department demand
-   - Department raises a procurement demand with a title, description, estimated
-     value and deadline.
-   - A requirement PDF may be attached, but is optional.
-   - Admin reviews and accepts the demand.
-   - Only Department can raise a demand using **New project**. Admin cannot
-     create or raise a procurement demand.
-   - Admin only reviews and accepts the Department's demand; Admin cannot attach
-     or upload a requirement PDF.
+1. Department letter and project creation
+   - Department gives Admin IA the procurement demand letter offline.
+   - Admin IA signs in, creates a new project using the letter's details and
+     uploads the letter PDF. The letter upload is required.
 
 2. TSC formation
-   - Admin IA forms a TSC with exactly three unique members and chooses one member
-     as chairperson.
-   - Once submitted, the project advances to the TSC report stage; no separate
-     approval stage is required for TSC formation.
+   - Admin IA forms a TSC from the 10 personnel available to each committee
+     form, selecting exactly three unique members and one chairperson.
+   - Admin IA uploads a supporting document after the TSC is formed.
+   - Once submitted, the proposed TSC goes to AS (IA) for approval.
+   - AS (IA) may query Admin without changing the committee, or return the TSC
+     to Admin IA specifically for member changes.
+   - If returned, Admin IA revises the membership and resubmits the TSC; Admin
+     then uploads the supporting document for the revised formation before AS
+     reviews it again.
+   - After AS (IA) approves, Admin uploads the signed approval PDF; the TSC is
+     then treated as the final committee, its membership is locked, and the
+     project advances to the report stage.
 
 3. TSC specifications report
-   - TSC prepares the specifications report and sends it to Admin IA.
+   - TSC prepares the specifications report and gives it to Admin IA offline.
+   - Admin IA uploads the report PDF in the online application.
+   - TSC has no application login credentials and does not sign in or upload the
+     report.
 
-4. AS (IA) review
-   - Admin IA sends the TSC report to AS (IA) for approval.
-   - AS (IA) may approve, return or query the report; the response goes back to
-     Admin.
+4. AS (IA) report review
+   - Admin IA sends the TSC report to AS (IA) for perusal.
+   - AS (IA) is the first report approver and may approve, return or query the
+     report; the response goes back to Admin.
+   - After approval, Admin uploads AS (IA)'s signed approval PDF before routing
+     the report to Admin HQ.
    - AS (IA) signs in with username AS and password AS123.
 
 5. Second review routing
-   - Admin routes the report to Admin HQ (headquarters) for DGS review.
-   - Admin HQ forwards the TSC report to DGS for review.
-   - DGS reviews the report and may raise a query for Admin HQ to answer.
-     The report remains with DGS until DGS approves it.
-   - On approval, DGS sends the report back to Admin HQ for draft tender
-     preparation.
-   - DGS signs in with username dgs and password dgs123.
+   - Admin routes the report to Admin HQ (headquarters).
+   - Admin HQ forwards the TSC report to DGS for offline review and approval.
+   - DGS is the second report approver; DGS approval and any queries are handled
+     offline. DGS has no application login. After DGS approves, the report and
+     signed document return to Admin HQ; HQ uploads the DGS signed approval PDF.
+   - Admin HQ then sends the report to CS/SR for the third approval offline.
+   - CS/SR has no application login. After CS/SR approves offline, the report
+     and signed document return to Admin HQ; HQ uploads the CS/SR signed
+     approval PDF. Tender processing begins only after this upload.
 
 6. Draft tender
-   - Admin HQ prepares and uploads the draft tender as a PDF and sends it to IA
-     (department).
+   - Admin HQ prepares and uploads the draft tender as a PDF and sends it only
+     to Admin (IA) for review.
 
 7. Final tender
-   - IA may revise the draft, uploads the final tender PDF and publishes it
-     with a deadline.
-   - Admin sends the final tender to participating vendors.
+   - Admin (IA) may review the draft and send suggestions to Admin HQ if needed.
+   - Admin HQ incorporates any suggestions, uploads the final tender PDF and
+     publishes it with a deadline.
+   - Admin HQ sends the final tender to participating vendors.
 
 8. Vendor activity (offline; do not implement)
    - Vendors receive the final tender.
@@ -54,60 +66,102 @@ is completed, the project shall show the next role and a small sign-in hint.
      are handled offline.
 
 9. Bid receipt
-    - After the tender deadline, Admin records that technical and financial
+    - After the tender deadline, Admin HQ records that technical and financial
       bids have been received and the number of bids.
 
 10. Bid Opening Board formation
-    - Admin forms a three-member Bid Opening Board with one chairperson.
+    - The Bid Opening Board is formed offline with three members and one
+      chairperson.
+    - Admin HQ uploads a PDF confirming that the board has been formed.
 
 11. Technical bid opening (offline; no application stage)
     - After the Bid Opening Board is formed, it opens the technical bids offline.
     - The next application stage is TEC formation.
 
 12. TEC formation
-    - Admin forms a three-member Technical Evaluation Committee (TEC) with one
-      chairperson and sends it to SS for approval.
+    - Admin HQ forms a three-member Technical Evaluation Committee (TEC) with one
+      chairperson from the same pool of 10 personnel and uploads a supporting
+      document for the formation.
+    - TEC members have no application login.
 
 13. SS approval
-    - SS may query or approve the proposed TEC.
+    - SS approves or queries the proposed TEC offline and has no application
+      login.
+    - Admin HQ records the offline decision and uploads SS's signed approval
+      PDF before TEC evaluation.
 
 14. Technical evaluation
-    - TEC evaluates the technical bids, may raise internal queries, determines
-      which vendors are technically qualified, and sends its report to Admin IA.
+    - TEC evaluates technical bids offline, determines qualified vendors, and
+      gives its report to Admin HQ.
+    - Admin HQ records the report; TEC has no application login.
+    - Six demo vendors are available for technical and financial evaluation.
 
-15. X committee formation
-    - Admin forms a three-member X committee with one chairperson.
+15. Financial bid opening
+    - No separate X committee is formed.
+    - TEC also opens qualified vendors' financial bids offline and gives the
+      results to Admin HQ, which records them.
 
 16. Financial evaluation
-    - X opens financial bids for vendors qualified by TEC, selects the top
-      three vendors and sends its report to Admin IA.
+    - TEC evaluates the opened financial bids offline and gives its top-three
+      report to Admin HQ, which records it.
 
 17. TAC formation
-    - Admin forms a three-member TAC with one chairperson.
-    - At least one TAC member must be from IA, the department raising the
-      requirement.
+    - Admin HQ forms a three-member TAC with one chairperson.
+    - TAC members are selected from the same pool of 10 personnel.
+    - At least one TAC member must be from the Inspection & Audit (IA)
+      department.
+    - Admin HQ uploads a supporting document after TAC formation.
+    - TAC members have no application login.
 
 18. TAC recommendation
-    - TAC reviews the TEC and X reports, selects the final vendor, and sends
-      Admin its report with the vendor, price bid and technical specifications.
+    - TAC reviews the TEC reports offline and gives Admin HQ its recommendation
+      with the vendor, price bid and technical specifications.
+    - Admin HQ records the recommendation.
 
 19. CFA and IFD
-    - CFA releases funds through IFD.
-    - IA records IFD confirmation and the project is marked Completed.
+    - CFA approves fund release through IFD offline and has no application
+      login.
+    - Admin HQ records the offline release and uploads CFA's signed approval
+      PDF.
+    - After IFD approval, Admin HQ uploads the final acceptance PDF and the
+      project is marked Completed. No CFA login is provided.
 
 Roles and demo accounts
-  Department: department / department123
-  Admin: admin / admin123
-  TSC and committee member: tsc / tsc123
-  Technical Evaluation Committee (TEC): tec / tec123
-  Tender Acceptance Committee (TAC): tac / tac123
-  AS (IA) report reviewer: AS / AS123
-  DGS report reviewer: dgs / dgs123
-  IA Wing: ia / ia123
-  HQ: hq / hq123
-  SS: superadmin / admin123
-  CFA: cfa / cfa123
+  Admin (IA): admin / admin123
+  AS (IA): AS / AS123
+  Admin HQ: hq / hq123
 
-Only Department can create a project through **New project**. All new projects
-begin at the department demand stage, where Admin reviews and accepts the demand.
-The requirement PDF upload is optional and appears only for the Department.
+These are the only application logins. Department, TSC, DGS, CS/SR, Bid
+Opening Board, SS, TEC, TAC, CFA and vendors do not sign in.
+
+Admin (IA) manages project creation and report approvals through AS (IA)'s first
+report approval, then routes the report to Admin HQ. HQ handles the offline DGS
+and CS/SR approval handoffs and uploads their signed documents after each
+approval returns to HQ. From draft tender processing onward, Admin HQ handles
+subsequent online tasks, records offline committee and CFA decisions, and
+uploads required documents. Admin (IA) may review the draft and submit
+suggestions. IFD approval is offline; Admin HQ uploads the final acceptance
+document afterward.
+
+Only Admin (IA) can create a project through **New project**. Admin creates the
+project from the Department's offline letter and must upload the letter PDF.
+New projects begin at TSC formation; there is no separate demand-submission or
+acceptance stage. For report processing, the logins are Admin (IA), AS
+(IA), and Admin HQ; DGS and CS/SR approvals are handled offline with no login.
+AS (IA) reviews both the proposed TSC and the TSC report. AS (IA) can return a
+proposed TSC to Admin for member changes; Admin resubmits it and uploads an
+updated supporting document. Once AS approves, TSC membership is locked. Admin
+(IA) uploads the signed AS (IA) approval PDFs, then routes the report to Admin
+HQ after its first report approval. HQ sends the report to DGS offline; after it
+returns, HQ uploads the signed DGS approval and sends the report to CS/SR
+offline. After it returns from CS/SR, HQ uploads the signed CS/SR approval
+before tender processing begins. Both DGS and CS/SR approvals and signings are
+offline. Admin (IA) may review the draft tender and send suggestions; Admin HQ
+publishes the final tender and uploads supporting documents after TEC/TAC
+formation, SS/CFA signed approval PDFs, and the final acceptance PDF. The Bid
+Opening Board is formed offline, and Admin HQ
+uploads its formation document. TEC performs technical evaluation and opens/
+evaluates the qualified vendors' financial bids offline; Admin HQ records the
+results and recommendation. No separate X committee is formed. The third TSC
+report approval is performed by CS/SR offline; Admin HQ uploads the signed
+CS/SR approval after it returns to HQ, after which tender processing begins.

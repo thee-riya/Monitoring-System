@@ -40,49 +40,84 @@ const auth = (req: express.Request, res: express.Response) => {
 };
 const project = (id: string) =>
   db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as any;
-const allowedRoles = (stage: string) => {
-  if (["demand_submission", "admin_report_review", "admin_after_as", "admin_issue_tender", "bid_submission",
-    "opening_board_formation", "tec_formation", "x_formation", "tac_formation"].includes(stage))
-    return ["admin"];
-  if (stage === "tec_review") return ["tec"];
-  if (["price_opening", "tac_review"].includes(stage))
-    return [stage === "tac_review" ? "tac" : "committee"];
-  if (["ia_tender_review", "ifd_review"].includes(stage))
-    return ["ia"];
-  if (stage === "as_review") return ["as_ia"];
-  if (stage === "dgs_ia_review") return ["dgs_ia"];
-  if (stage === "cfa_approval") return ["cfa"];
-  if (stage === "hq_review") return ["hq"];
-  if (stage === "tender_draft") return ["hq"];
-  return ["committee"];
-};
-const handoffStages = new Set([
-  "tsc_report",
-  "admin_report_review",
-  "as_review",
-  "admin_after_as",
-  "hq_review",
-  "dgs_ia_review",
-  "tender_draft",
-  "ia_tender_review",
-  "admin_issue_tender",
-  "tec_formation",
-  "tec_approval",
-  "tec_review",
-  "x_formation",
-  "price_opening",
-  "tac_formation",
-  "tac_review",
-  "cfa_approval",
-  "ifd_review",
-  "completed",
-]);
 const queryResponderRoles: Record<string, string[]> = {
   demand_submission: ["admin"],
+  tsc_approval: ["as_ia", "admin"],
   as_review: ["as_ia", "admin"],
-  dgs_ia_review: ["dgs_ia", "hq"],
+  dgs_ia_review: ["hq"],
   hq_review: ["hq", "admin"],
-  tec_approval: ["super_admin", "admin"],
+  tec_approval: ["admin", "hq"],
+};
+const formationDocumentHandoffs: Record<
+  string,
+  {
+    category: string;
+    nextStage: string;
+    uploaderRole: "admin" | "hq";
+    description: string;
+  }
+> = {
+  tsc_formation_document: {
+    category: "tsc_formation_support",
+    nextStage: "tsc_approval",
+    uploaderRole: "admin",
+    description: "TSC formation supporting document",
+  },
+  tec_formation_document: {
+    category: "tec_formation_support",
+    nextStage: "tec_approval",
+    uploaderRole: "hq",
+    description: "TEC formation supporting document",
+  },
+  tac_formation_document: {
+    category: "tac_formation_support",
+    nextStage: "tac_review",
+    uploaderRole: "hq",
+    description: "TAC formation supporting document",
+  },
+};
+const signedApprovalHandoffs: Record<
+  string,
+  {
+    nextStage: string;
+    approval: string;
+    uploaderRole: "admin" | "hq";
+    completion?: string;
+  }
+> = {
+  admin_tsc_signature: {
+    nextStage: "tsc_report",
+    approval: "AS (IA) TSC formation approval",
+    uploaderRole: "admin",
+  },
+  admin_as_signature: {
+    nextStage: "admin_after_as",
+    approval: "AS (IA) TSC report approval",
+    uploaderRole: "admin",
+  },
+  dgs_ia_review: {
+    nextStage: "hq_after_dgs",
+    approval: "DGS offline TSC report approval",
+    uploaderRole: "hq",
+    completion: "Admin HQ can now send the report to CS/SR for offline approval",
+  },
+  cs_sr_review: {
+    nextStage: "tender_draft",
+    approval: "CS/SR offline TSC report approval",
+    uploaderRole: "hq",
+    completion: "Tender processing can begin",
+  },
+  admin_tec_signature: {
+    nextStage: "tec_review",
+    approval: "SS TEC approval",
+    uploaderRole: "hq",
+  },
+  admin_cfa_signature: {
+    nextStage: "ifd_review",
+    approval: "CFA fund release approval",
+    uploaderRole: "hq",
+    completion: "After IFD approval, Admin HQ must upload the final acceptance document",
+  },
 };
 const queryParticipant = (user: (typeof users)[number], query: any) =>
   user.id === query.actor_id ||
@@ -113,6 +148,7 @@ app.post("/api/login", (req, res) => {
     input.success &&
     users.find(
       (u) =>
+        ["admin", "as_ia", "hq"].includes(u.role) &&
         u.username === input.data.username &&
         u.password === input.data.password,
     );
@@ -186,40 +222,49 @@ app.get("/api/projects/:id/logs", (req, res) => {
 app.post("/api/projects/:id/committees", (req, res) => {
   const user = auth(req, res);
   const row = project(req.params.id);
-  if (!user || !row || user.role !== "admin")
+  if (!user || !row)
     return res
       .status(403)
-      .json({ error: "Only Admin can constitute committees" });
+      .json({ error: "A signed-in user and valid project are required" });
   const committeeWorkflow: Record<
     string,
-    { type: string; next: string; requiresIa?: boolean; requiresApproval?: boolean }
+    {
+      type: string;
+      next: string;
+      requiresIa?: boolean;
+      requiresApproval?: boolean;
+      approvalAuthority?: string;
+    }
   > = {
     committee_pending: {
       type: "Technical Scrutiny Committee",
-      next: "tsc_report",
-    },
-    opening_board_formation: {
-      type: "Bid Opening Board",
-      next: "tec_formation",
+      next: "tsc_formation_document",
+      requiresApproval: true,
+      approvalAuthority: "AS (IA)",
     },
     tec_formation: {
       type: "Technical Evaluation Committee",
-      next: "tec_approval",
+      next: "tec_formation_document",
       requiresApproval: true,
-    },
-    x_formation: {
-      type: "Financial Evaluation Committee (X)",
-      next: "price_opening",
+      approvalAuthority: "SS",
     },
     tac_formation: {
       type: "Tender Acceptance Committee (TAC)",
-      next: "tac_review",
+      next: "tac_formation_document",
       requiresIa: true,
     },
   };
   const workflow = committeeWorkflow[row.stage];
   if (!workflow)
     return res.status(400).json({ error: "A committee cannot be formed at this stage" });
+  const requiredRole = row.stage === "committee_pending" ? "admin" : "hq";
+  if (user.role !== requiredRole)
+    return res.status(403).json({
+      error:
+        requiredRole === "admin"
+          ? "Only Admin (IA) can form the TSC"
+          : "Only Admin HQ can form committees from the Bid Opening Board stage onward",
+    });
   const parsed = z
     .object({
       chairmanId: z.string().min(1),
@@ -260,12 +305,27 @@ app.post("/api/projects/:id/committees", (req, res) => {
     workflow.requiresIa &&
     !selectedPeople.some((person) => person.department_code === "IA")
   )
-    return res.status(400).json({ error: "TAC must include at least one IA member" });
+    return res.status(400).json({
+      error: "TAC must include at least one member from the Inspection & Audit department",
+    });
   const existing = db
     .prepare(
       "SELECT MAX(version) version FROM committees WHERE project_id = ? AND type = ?",
     )
     .get(row.id, workflow.type) as { version: number | null };
+  const previousTsc =
+    workflow.type === "Technical Scrutiny Committee"
+      ? (db
+          .prepare(
+            "SELECT id, status FROM committees WHERE project_id = ? AND type = ? ORDER BY version DESC LIMIT 1",
+          )
+          .get(row.id, workflow.type) as
+          | { id: string; status: string }
+          | undefined)
+      : undefined;
+  const isTscRevision =
+    row.stage === "committee_pending" &&
+    previousTsc?.status === "changes_requested";
   const committeeId = uid("committee");
   const createCommittee = db.transaction(() => {
     db.prepare(
@@ -297,10 +357,12 @@ app.post("/api/projects/:id/committees", (req, res) => {
       uid("approval"),
       committeeId,
       user.id,
-      workflow.requiresApproval ? "submitted" : "formed",
-      workflow.requiresApproval
-        ? "Committee composition submitted for SS approval"
-        : "Committee constituted",
+      isTscRevision ? "resubmitted" : workflow.requiresApproval ? "submitted" : "formed",
+      isTscRevision
+        ? "Revised TSC membership submitted in response to AS (IA)'s request"
+        : workflow.requiresApproval
+          ? `Committee composition submitted for ${workflow.approvalAuthority} approval`
+          : "Committee constituted",
       now(),
     );
     db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(
@@ -311,7 +373,9 @@ app.post("/api/projects/:id/committees", (req, res) => {
       row.id,
       "committee",
       user.id,
-      `${workflow.type} constituted (version ${(existing.version ?? 0) + 1})`,
+      isTscRevision
+        ? `Admin (IA) updated the TSC membership and submitted revision ${(existing.version ?? 0) + 1} for AS (IA) approval`
+        : `${workflow.type} constituted (version ${(existing.version ?? 0) + 1})`,
     );
   });
   createCommittee();
@@ -319,67 +383,114 @@ app.post("/api/projects/:id/committees", (req, res) => {
 });
 app.post("/api/committees/:id/decision", (req, res) => {
   const user = auth(req, res);
-  if (!user || user.role !== "super_admin")
-    return res
-      .status(403)
-      .json({ error: "Only SS (Super Admin) can decide TEC approval" });
+  if (!user) return;
   const committee = db
     .prepare("SELECT * FROM committees WHERE id = ?")
     .get(req.params.id) as any;
   if (!committee) return res.status(404).json({ error: "Committee not found" });
-  if (
-    committee.type !== "Technical Evaluation Committee" ||
-    committee.status !== "pending" ||
-    project(committee.project_id)?.stage !== "tec_approval"
-  )
-    return res.status(400).json({ error: "No TEC approval is pending for this committee" });
+  const projectStage = project(committee.project_id)?.stage;
+  const isTscApproval =
+    committee.type === "Technical Scrutiny Committee" &&
+    committee.status === "pending" &&
+    projectStage === "tsc_approval" &&
+    user.role === "as_ia";
+  const isTecApproval =
+    committee.type === "Technical Evaluation Committee" &&
+    committee.status === "pending" &&
+    projectStage === "tec_approval" &&
+    user.role === "hq";
+  if (!isTscApproval && !isTecApproval)
+    return res.status(403).json({
+      error: "This committee has no pending approval for your role",
+    });
+  const approvalAuthority = isTscApproval ? "AS (IA)" : "SS";
+  const approvalStage = isTscApproval ? "tsc_approval" : "tec_approval";
+  const nextStage = isTscApproval
+    ? "admin_tsc_signature"
+    : "admin_tec_signature";
   const parsed = z
     .object({
-      action: z.enum(["approve", "query"]),
+      action: z.enum(["approve", "query", "request_changes"]),
       remarks: z.string().min(2),
     })
     .safeParse(req.body);
   if (!parsed.success)
     return res.status(400).json({ error: "Decision and remarks are required" });
-  if (parsed.data.action === "query") {
-    db.prepare(
-      "INSERT INTO queries (id, project_id, actor_id, text, status, at, stage) VALUES (?, ?, ?, ?, 'open', ?, 'tec_approval')",
-    ).run(
-      uid("qry"),
-      committee.project_id,
-      user.id,
-      parsed.data.remarks,
-      now(),
-    );
-    addEvent(
-      committee.project_id,
-      "tec_query",
-      user.id,
-      `SS queried the proposed TEC: ${parsed.data.remarks}`,
-    );
+  if (parsed.data.action === "request_changes" && !isTscApproval)
+    return res
+      .status(400)
+      .json({ error: "Only AS (IA) can request changes to TSC members" });
+  if (parsed.data.action === "request_changes") {
+    const requestChanges = db.transaction(() => {
+      db.prepare("UPDATE committees SET status = 'changes_requested' WHERE id = ?").run(
+        committee.id,
+      );
+      db.prepare("INSERT INTO committee_approvals VALUES (?, ?, ?, ?, ?, ?)").run(
+        uid("approval"),
+        committee.id,
+        user.id,
+        parsed.data.action,
+        parsed.data.remarks,
+        now(),
+      );
+      db.prepare("UPDATE projects SET stage = 'committee_pending' WHERE id = ?").run(
+        committee.project_id,
+      );
+      addEvent(
+        committee.project_id,
+        "committee_changes_requested",
+        user.id,
+        `AS (IA) returned the proposed TSC to Admin (IA) for member changes: ${parsed.data.remarks}`,
+      );
+    });
+    requestChanges();
+  } else if (parsed.data.action === "query") {
+    const recordQuery = db.transaction(() => {
+      db.prepare(
+        "INSERT INTO queries (id, project_id, actor_id, text, status, at, stage) VALUES (?, ?, ?, ?, 'open', ?, ?)",
+      ).run(
+        uid("qry"),
+        committee.project_id,
+        user.id,
+        parsed.data.remarks,
+        now(),
+        approvalStage,
+      );
+      addEvent(
+        committee.project_id,
+        "committee_query",
+        user.id,
+        `${approvalAuthority} queried the proposed ${committee.type}: ${parsed.data.remarks}`,
+      );
+    });
+    recordQuery();
   } else {
-    db.prepare("UPDATE committees SET status = 'approved' WHERE id = ?").run(
-      committee.id,
-    );
-    db.prepare("INSERT INTO committee_approvals VALUES (?, ?, ?, ?, ?, ?)").run(
-      uid("approval"),
-      committee.id,
-      user.id,
-      parsed.data.action,
-      parsed.data.remarks,
-      now(),
-    );
-    if (parsed.data.action === "approve") {
-      db.prepare("UPDATE projects SET stage = 'tec_review' WHERE id = ?").run(
+    const approveCommittee = db.transaction(() => {
+      db.prepare("UPDATE committees SET status = 'approved' WHERE id = ?").run(
+        committee.id,
+      );
+      db.prepare("INSERT INTO committee_approvals VALUES (?, ?, ?, ?, ?, ?)").run(
+        uid("approval"),
+        committee.id,
+        user.id,
+        parsed.data.action,
+        parsed.data.remarks,
+        now(),
+      );
+      db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(
+        nextStage,
         committee.project_id,
       );
       addEvent(
         committee.project_id,
         "committee_approval",
         user.id,
-        "SS approved the TEC; technical bid evaluation can begin",
+        isTscApproval
+          ? "AS (IA) approved the TSC as final; Admin must upload the signed approval before the workflow continues"
+          : "SS approved the TEC; Admin HQ must upload the signed approval before technical bid evaluation can begin",
       );
-    }
+    });
+    approveCommittee();
   }
   res.json({
     committee: listCommittees(committee.project_id)[0],
@@ -388,50 +499,48 @@ app.post("/api/committees/:id/decision", (req, res) => {
 });
 app.post("/api/projects", (req, res) => {
   const user = auth(req, res);
-  if (!user || user.role !== "department")
+  if (!user || user.role !== "admin")
     return res
       .status(403)
-      .json({ error: "Only the Department can raise a procurement demand" });
+      .json({ error: "Only Admin (IA) can create a procurement project" });
   const parsed = z
     .object({
       title: z.string().min(2),
       description: z.string().min(5),
       estimatedValue: z.coerce.number().min(0),
       deadline: z.string().min(1),
-      requirementName: z.string().min(1).max(255).optional(),
-      requirementPdf: z.string().min(1).max(11_200_000).optional(),
+      requirementName: z.string().min(1).max(255),
+      requirementPdf: z.string().min(1).max(11_200_000),
     })
     .safeParse(req.body);
   if (!parsed.success)
     return res
       .status(400)
-      .json({ error: "Demand title, description, value and date are required" });
-  if (parsed.data.requirementPdf) {
-    const pdfData =
-      /^data:application\/pdf;base64,([A-Za-z0-9+/]+={0,2})$/.exec(
-        parsed.data.requirementPdf,
-      );
-    if (
-      !pdfData ||
-      !parsed.data.requirementName?.toLowerCase().endsWith(".pdf")
-    )
-      return res
-        .status(400)
-        .json({ error: "Upload a valid PDF requirement document" });
-    const pdfBytes = Buffer.from(pdfData[1], "base64");
-    if (
-      pdfBytes.length === 0 ||
-      pdfBytes.length > 8 * 1024 * 1024 ||
-      pdfBytes.subarray(0, 5).toString() !== "%PDF-"
-    )
-      return res
-        .status(400)
-        .json({ error: "The requirement file must be a PDF no larger than 8 MB" });
-  }
+      .json({ error: "Project details and the Department's letter are required" });
+  const pdfData =
+    /^data:application\/pdf;base64,([A-Za-z0-9+/]+={0,2})$/.exec(
+      parsed.data.requirementPdf,
+    );
+  if (
+    !pdfData ||
+    !parsed.data.requirementName.toLowerCase().endsWith(".pdf")
+  )
+    return res
+      .status(400)
+      .json({ error: "Upload a valid PDF department letter" });
+  const pdfBytes = Buffer.from(pdfData[1], "base64");
+  if (
+    pdfBytes.length === 0 ||
+    pdfBytes.length > 8 * 1024 * 1024 ||
+    pdfBytes.subarray(0, 5).toString() !== "%PDF-"
+  )
+    return res
+      .status(400)
+      .json({ error: "The department letter must be a PDF no larger than 8 MB" });
   const id = uid("PRJ");
   const documentId = uid("doc");
   const at = now();
-  const stage = "demand_submission";
+  const stage = "committee_pending";
   const createDemand = db.transaction(() => {
     db.prepare("INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
       id,
@@ -443,128 +552,28 @@ app.post("/api/projects", (req, res) => {
       user.id,
       at,
     );
-    if (parsed.data.requirementPdf && parsed.data.requirementName)
-      db.prepare(
-        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      ).run(
-        documentId,
-        id,
-        "requirement",
-        parsed.data.requirementName,
-        `uploads/${documentId}-${parsed.data.requirementName.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 60)}`,
-        user.id,
-        at,
-        "application/pdf",
-        parsed.data.requirementPdf,
-      );
     db.prepare(
-      "INSERT INTO queries (id, project_id, actor_id, text, status, at, stage) VALUES (?, ?, ?, ?, 'open', ?, ?)",
+      "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ).run(
-      uid("qry"),
+      documentId,
       id,
+      "department_letter",
+      parsed.data.requirementName,
+      `uploads/${documentId}-${parsed.data.requirementName.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 60)}`,
       user.id,
-      parsed.data.description,
       at,
-      stage,
+      "application/pdf",
+      parsed.data.requirementPdf,
     );
     addEvent(
       id,
-      "demand_submitted",
+      "project_created",
       user.id,
-      `Department (ARC) raised a procurement demand${parsed.data.requirementPdf ? " with a requirement PDF" : ""}`,
+      "Admin (IA) created the project and uploaded the Department's offline letter",
     );
   });
   createDemand();
   return res.status(201).json({ project: projectView(project(id), user.id) });
-});
-app.post("/api/projects/:id/advance", (req, res) => {
-  const user = auth(req, res);
-  const row = project(req.params.id);
-  if (!user || !row)
-    return res.status(404).json({ error: "Project not found" });
-  if (handoffStages.has(row.stage))
-    return res
-      .status(403)
-      .json({
-        error: "This stage requires its designated handoff or approval action",
-      });
-  if (!allowedRoles(row.stage).includes(user.role))
-    return res.status(403).json({ error: "You cannot advance this stage" });
-  const transitions: Record<string, { role: string; target: string; label: string }> = {
-    demand_submission: { role: "admin", target: "committee_pending", label: "Admin accepted the department procurement demand" },
-  };
-  const transitionForStage = transitions[row.stage];
-  if (
-    !transitionForStage ||
-    user.role !== transitionForStage.role ||
-    (req.body.targetStage && req.body.targetStage !== transitionForStage.target)
-  )
-    return res
-      .status(400)
-      .json({
-        error: "This stage requires its designated action",
-      });
-  const transition = db.transaction(() => {
-    db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(
-      transitionForStage.target,
-      row.id,
-    );
-    addEvent(
-      row.id,
-      "transition",
-      user.id,
-      req.body.note || transitionForStage.label,
-    );
-  });
-  transition();
-  return res.json({ project: projectView(project(row.id), user.id) });
-});
-app.post("/api/projects/:id/tsc-report", (req, res) => {
-  const user = auth(req, res);
-  const row = project(req.params.id);
-  if (!user || !row)
-    return res.status(404).json({ error: "Project not found" });
-  if (user.role !== "committee" || row.stage !== "tsc_report") {
-    return res
-      .status(403)
-      .json({ error: "Only TSC can submit a report at the TSC report stage" });
-  }
-  const parsed = z
-    .object({ title: z.string().min(3), content: z.string().min(20) })
-    .safeParse(req.body);
-  if (!parsed.success)
-    return res
-      .status(400)
-      .json({ error: "Report title and detailed content are required" });
-  const latest = db
-    .prepare(
-      "SELECT MAX(version) version FROM tsc_reports WHERE project_id = ?",
-    )
-    .get(row.id) as { version: number | null };
-  const reportId = uid("report");
-  const submit = db.transaction(() => {
-    db.prepare("INSERT INTO tsc_reports VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
-      reportId,
-      row.id,
-      (latest.version ?? 0) + 1,
-      user.id,
-      parsed.data.title,
-      parsed.data.content,
-      "submitted",
-      now(),
-    );
-    db.prepare("UPDATE projects SET stage = 'admin_report_review' WHERE id = ?").run(
-      row.id,
-    );
-    addEvent(
-      row.id,
-      "tsc_report",
-      user.id,
-      `TSC submitted report version ${(latest.version ?? 0) + 1} to Admin for review`,
-    );
-  });
-  submit();
-  res.status(201).json({ project: projectView(project(row.id), user.id) });
 });
 app.post("/api/projects/:id/workflow-action", (req, res) => {
   const user = auth(req, res);
@@ -618,11 +627,6 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
     db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(target, row.id);
     addEvent(row.id, type, user.id, message);
   };
-  const saveQuery = (text: string) => {
-    db.prepare(
-      "INSERT INTO queries (id, project_id, actor_id, text, status, at, stage) VALUES (?, ?, ?, ?, 'open', ?, ?)",
-    ).run(uid("qry"), row.id, user.id, text, now(), row.stage);
-  };
   try {
     if (action === "forward_as" && requireStageRole("admin_report_review", "admin")) {
       move("as_review", action, "Admin sent the TSC specifications report to AS (IA)");
@@ -637,36 +641,28 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
     ) {
       const input = z.object({ remarks: z.string().min(2) }).safeParse(data);
       if (!input.success)
-        return res.status(400).json({ error: "Add remarks before sending the report to DGS" });
-      move("dgs_ia_review", action, `Admin HQ sent the report to DGS for review: ${input.data.remarks}`);
+        return res
+          .status(400)
+          .json({ error: "Add remarks before sending the report for offline DGS approval" });
+      move(
+        "dgs_ia_review",
+        action,
+        `Admin HQ sent the report to DGS for offline approval: ${input.data.remarks}`,
+      );
     } else if (
-      action === "second_review_decision" &&
-      row.stage === "dgs_ia_review" &&
-      user.role === "dgs_ia"
+      action === "forward_to_cs_sr_review" &&
+      requireStageRole("hq_after_dgs", "hq")
     ) {
-      const input = z
-        .object({
-          decision: z.enum(["approve", "query"]),
-          remarks: z.string().min(2),
-        })
-        .safeParse(data);
+      const input = z.object({ remarks: z.string().min(2) }).safeParse(data);
       if (!input.success)
-        return res.status(400).json({ error: "A decision and remarks are required" });
-      if (input.data.decision === "query") {
-        saveQuery(input.data.remarks);
-        addEvent(
-          row.id,
-          action,
-          user.id,
-          `DGS queried Admin HQ about the report: ${input.data.remarks}`,
-        );
-      } else {
-        move(
-          "tender_draft",
-          action,
-          `DGS approved the report and returned it to Admin HQ: ${input.data.remarks}`,
-        );
-      }
+        return res
+          .status(400)
+          .json({ error: "Add remarks before sending the report for offline CS/SR approval" });
+      move(
+        "cs_sr_review",
+        action,
+        `Admin HQ sent the report to CS/SR for offline approval after DGS approval: ${input.data.remarks}`,
+      );
     } else if (
       action === "submit_draft_tender" &&
       requireStageRole("tender_draft", "hq")
@@ -681,10 +677,30 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
       if (!input.success)
         return res.status(400).json({ error: "Upload the draft tender PDF and add remarks" });
       storePdf("draft_tender", input.data.name, input.data.content);
-      move("ia_tender_review", action, `Admin HQ sent draft tender to IA: ${input.data.remarks}`);
+      move(
+        "ia_tender_review",
+        action,
+        `Admin HQ uploaded the draft tender and sent it only to Admin (IA): ${input.data.remarks}`,
+      );
+    } else if (
+      action === "submit_draft_suggestions" &&
+      requireStageRole("ia_tender_review", "admin")
+    ) {
+      const input = z.object({ remarks: z.string().min(2) }).safeParse(data);
+      if (!input.success)
+        return res
+          .status(400)
+          .json({ error: "Enter suggestions for Admin HQ about the draft tender" });
+      saveWorkflowRecord(row.id, "draft_tender_suggestions", input.data, user.id);
+      addEvent(
+        row.id,
+        action,
+        user.id,
+        `Admin (IA) sent draft tender suggestions to Admin HQ: ${input.data.remarks}`,
+      );
     } else if (
       action === "publish_final_tender" &&
-      requireStageRole("ia_tender_review", "ia")
+      requireStageRole("ia_tender_review", "hq")
     ) {
       const input = z
         .object({
@@ -703,15 +719,15 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
         input.data.deadline,
         row.id,
       );
-      move("admin_issue_tender", action, `IA published the final tender with deadline ${input.data.deadline}: ${input.data.remarks}`);
+      move("admin_issue_tender", action, `Admin HQ published the final tender with deadline ${input.data.deadline}: ${input.data.remarks}`);
     } else if (
       action === "issue_tender" &&
-      requireStageRole("admin_issue_tender", "admin")
+      requireStageRole("admin_issue_tender", "hq")
     ) {
-      move("bid_submission", action, `Admin sent the final tender to vendors; bids due ${row.deadline}`);
+      move("bid_submission", action, `Admin HQ sent the final tender to vendors; bids due ${row.deadline}`);
     } else if (
       action === "confirm_bids" &&
-      requireStageRole("bid_submission", "admin")
+      requireStageRole("bid_submission", "hq")
     ) {
       const input = z
         .object({ count: z.coerce.number().int().min(0), remarks: z.string().min(2) })
@@ -722,10 +738,10 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
       if (!Number.isFinite(tenderDeadline) || tenderDeadline > Date.now())
         return res.status(400).json({ error: "Bid receipt can be recorded only after the tender deadline" });
       saveWorkflowRecord(row.id, "bid_receipt", input.data, user.id);
-      move("opening_board_formation", action, `Admin confirmed receipt of ${input.data.count} bids: ${input.data.remarks}`);
+      move("opening_board_formation", action, `Admin HQ confirmed receipt of ${input.data.count} bids: ${input.data.remarks}`);
     } else if (
       action === "submit_tec_report" &&
-      requireStageRole("tec_review", "tec")
+      requireStageRole("tec_review", "hq")
     ) {
       const input = z
         .object({
@@ -742,10 +758,10 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
       if (vendors.length !== new Set(input.data.qualifiedVendorIds).size)
         return res.status(400).json({ error: "Select valid, unique active vendors" });
       saveWorkflowRecord(row.id, "tec_report", { ...input.data, qualifiedVendorIds: vendors.map((vendor) => vendor.id) }, user.id);
-      move("x_formation", action, `TEC submitted its technical qualification report: ${input.data.title}`);
+      move("price_opening", action, `TEC submitted its technical qualification report to Admin HQ: ${input.data.title}`);
     } else if (
-      action === "submit_x_report" &&
-      requireStageRole("price_opening", "committee")
+      action === "submit_tec_financial_report" &&
+      requireStageRole("price_opening", "hq")
     ) {
       const input = z
         .object({
@@ -763,11 +779,15 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
         : [];
       if (!input.data.topVendorIds.every((id) => qualified.includes(id)))
         return res.status(400).json({ error: "Financial evaluation can only include technically qualified vendors" });
-      saveWorkflowRecord(row.id, "x_report", input.data, user.id);
-      move("tac_formation", action, "X committee submitted its top-three financial evaluation to Admin");
+      saveWorkflowRecord(row.id, "tec_financial_report", input.data, user.id);
+      move(
+        "tac_formation",
+        action,
+        "TEC opened and evaluated financial bids, then submitted its top-three report to Admin HQ",
+      );
     } else if (
       action === "submit_tac_report" &&
-      requireStageRole("tac_review", "tac")
+      requireStageRole("tac_review", "hq")
     ) {
       const input = z
         .object({
@@ -780,19 +800,19 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
       if (!input.success)
         return res.status(400).json({ error: "Selected vendor, positive price, technical specifications and report are required" });
       const shortlist = db
-        .prepare("SELECT data FROM workflow_records WHERE project_id = ? AND kind = 'x_report' ORDER BY at DESC LIMIT 1")
+        .prepare("SELECT data FROM workflow_records WHERE project_id = ? AND kind IN ('tec_financial_report', 'x_report') ORDER BY at DESC LIMIT 1")
         .get(row.id) as { data: string } | undefined;
       const topVendorIds = shortlist
         ? (JSON.parse(shortlist.data).topVendorIds as string[])
         : [];
       if (!topVendorIds.includes(input.data.vendorId))
-        return res.status(400).json({ error: "Select a vendor from the X committee shortlist" });
+        return res.status(400).json({ error: "Select a vendor from the TEC financial shortlist" });
       const vendor = db.prepare("SELECT name FROM vendors WHERE id = ?").get(input.data.vendorId) as { name: string };
       saveWorkflowRecord(row.id, "tac_report", { ...input.data, vendorName: vendor.name }, user.id);
-      move("cfa_approval", action, `TAC recommended ${vendor.name} at ${input.data.price} with technical specifications`);
+      move("cfa_approval", action, `TAC sent its recommendation to Admin HQ: ${vendor.name} at ${input.data.price} with technical specifications`);
     } else if (
       action === "cfa_release_funds" &&
-      requireStageRole("cfa_approval", "cfa")
+      requireStageRole("cfa_approval", "hq")
     ) {
       const input = z
         .object({
@@ -804,32 +824,7 @@ app.post("/api/projects/:id/workflow-action", (req, res) => {
       if (!input.success)
         return res.status(400).json({ error: "CFA release reference, positive amount and remarks are required" });
       saveWorkflowRecord(row.id, "cfa_fund_release", input.data, user.id);
-      move("ifd_review", action, `CFA released ${input.data.amount} through IFD: ${input.data.reference}`);
-    } else if (
-      action === "release_funds" &&
-      requireStageRole("ifd_review", "ia")
-    ) {
-      const input = z
-        .object({
-          reference: z.string().min(2),
-          amount: z.coerce.number().positive(),
-          remarks: z.string().min(5),
-        })
-        .safeParse(data);
-      if (!input.success)
-        return res.status(400).json({ error: "Fund release reference, positive amount and remarks are required" });
-      const cfaRelease = db
-        .prepare("SELECT data FROM workflow_records WHERE project_id = ? AND kind = 'cfa_fund_release' ORDER BY at DESC LIMIT 1")
-        .get(row.id) as { data: string } | undefined;
-      const cfaData = cfaRelease ? JSON.parse(cfaRelease.data) : null;
-      if (
-        !cfaData ||
-        cfaData.reference !== input.data.reference ||
-        Number(cfaData.amount) !== input.data.amount
-      )
-        return res.status(400).json({ error: "IFD confirmation must match the CFA release reference and amount" });
-      saveWorkflowRecord(row.id, "fund_release", input.data, user.id);
-      move("completed", action, `CFA released funds through IFD: ${input.data.reference}`);
+      move("admin_cfa_signature", action, `Admin HQ recorded CFA's offline approval through IFD for ${input.data.amount}: ${input.data.reference}; Admin HQ must upload the signed approval`);
     } else {
       return res.status(403).json({ error: "This action is not available for your role or the current project stage" });
     }
@@ -868,7 +863,8 @@ app.post("/api/projects/:id/as-decision", (req, res) => {
       "AS (IA) raised a query on the TSC report",
     );
   } else {
-    db.prepare("UPDATE projects SET stage = 'admin_after_as' WHERE id = ?").run(
+    db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(
+      parsed.data.action === "approve" ? "admin_as_signature" : "admin_after_as",
       row.id,
     );
     db.prepare(
@@ -911,7 +907,7 @@ app.post("/api/projects/:id/hq-forward", (req, res) => {
     row.id,
     "hq_forward",
     user.id,
-    `Admin HQ sent the report to DGS for review: ${parsed.data.remarks}`,
+    `Admin HQ sent the report to DGS for offline approval: ${parsed.data.remarks}`,
   );
   return res.json({ project: projectView(project(row.id), user.id) });
 });
@@ -920,10 +916,10 @@ app.post("/api/projects/:id/close", (req, res) => {
   if (!user) return;
   const row = project(req.params.id);
   if (!row) return res.status(404).json({ error: "Project not found" });
-  if (user.role !== "cfa")
+  if (user.role !== "hq")
     return res
       .status(403)
-      .json({ error: "Only CFA can release funds after TAC selection" });
+      .json({ error: "Only Admin HQ can record the offline CFA approval" });
   if (row.stage !== "cfa_approval")
     return res
       .status(400)
@@ -936,12 +932,12 @@ app.post("/api/projects/:id/close", (req, res) => {
   if (!release.success)
     return res.status(400).json({ error: "Fund release details are required" });
   saveWorkflowRecord(row.id, "cfa_fund_release", release.data, user.id);
-  db.prepare("UPDATE projects SET stage = 'ifd_review' WHERE id = ?").run(row.id);
+  db.prepare("UPDATE projects SET stage = 'admin_cfa_signature' WHERE id = ?").run(row.id);
   addEvent(
     row.id,
     "cfa_release_funds",
     user.id,
-    `CFA released ${release.data.amount} through IFD: ${release.data.reference}`,
+    `CFA approved release of ${release.data.amount} through IFD: ${release.data.reference}; Admin HQ must upload the signed approval`,
   );
   return res.json({ project: projectView(project(row.id), user.id) });
 });
@@ -960,12 +956,38 @@ app.post("/api/projects/:id/documents", (req, res) => {
     .safeParse(req.body);
   if (!parsed.success)
     return res.status(400).json({ error: "Document details are required" });
+  const formationHandoff = formationDocumentHandoffs[row.stage];
+  const signatureHandoff = signedApprovalHandoffs[row.stage];
+  const isCommitteeFormationDocument =
+    formationHandoff !== undefined &&
+    parsed.data.category === formationHandoff.category &&
+    user.role === formationHandoff.uploaderRole;
+  const isBidOpeningBoardDocument =
+    parsed.data.category === "bid_opening_board_formation" &&
+    row.stage === "opening_board_formation" &&
+    user.role === "hq";
+  const isFinalAcceptanceDocument =
+    parsed.data.category === "final_acceptance" &&
+    row.stage === "ifd_review" &&
+    user.role === "hq";
+  const isTscReportUpload =
+    parsed.data.category === "tsc_report" &&
+    row.stage === "tsc_report" &&
+    user.role === "admin";
+  const isSignedApprovalUpload =
+    parsed.data.category === "signed_approval" &&
+    signatureHandoff !== undefined &&
+    user.role === signatureHandoff.uploaderRole;
   if (
-    parsed.data.category !== "tsc_report" ||
-    user.role !== "committee" ||
-    row.stage !== "tsc_report"
+    !isTscReportUpload &&
+    !isSignedApprovalUpload &&
+    !isBidOpeningBoardDocument &&
+    !isCommitteeFormationDocument &&
+    !isFinalAcceptanceDocument
   )
-    return res.status(403).json({ error: "Only TSC may upload its report PDF at this stage" });
+    return res
+      .status(403)
+      .json({ error: "This role cannot upload this document at the current stage" });
   const pdfData = /^data:application\/pdf;base64,([A-Za-z0-9+/]+={0,2})$/.exec(
     parsed.data.content,
   );
@@ -974,28 +996,160 @@ app.post("/api/projects/:id/documents", (req, res) => {
     !pdfData ||
     Buffer.from(pdfData[1], "base64").subarray(0, 5).toString() !== "%PDF-"
   )
-    return res.status(400).json({ error: "Upload a valid PDF report" });
+    return res.status(400).json({ error: "Upload a valid PDF document" });
   const documentId = uid("doc");
   const shortName = parsed.data.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 60) || "document";
-  db.prepare(
-    "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-  ).run(
-    documentId,
-    row.id,
-    parsed.data.category,
-    parsed.data.name,
-    `uploads/${documentId}-${shortName}`,
-    user.id,
-    now(),
-    parsed.data.mimeType,
-    parsed.data.content,
-  );
-  addEvent(
-    row.id,
-    "document_upload",
-    user.id,
-    `${parsed.data.name} uploaded under ${parsed.data.category}`,
-  );
+  const uploadedAt = now();
+  if (parsed.data.category === "tsc_report") {
+    const latest = db
+      .prepare(
+        "SELECT MAX(version) version FROM tsc_reports WHERE project_id = ?",
+      )
+      .get(row.id) as { version: number | null };
+    const version = (latest.version ?? 0) + 1;
+    const reportId = uid("report");
+    const uploadReport = db.transaction(() => {
+      db.prepare(
+        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        documentId,
+        row.id,
+        parsed.data.category,
+        parsed.data.name,
+        `uploads/${documentId}-${shortName}`,
+        user.id,
+        uploadedAt,
+        parsed.data.mimeType,
+        parsed.data.content,
+      );
+      db.prepare("INSERT INTO tsc_reports VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(
+        reportId,
+        row.id,
+        version,
+        user.id,
+        parsed.data.name.replace(/\.pdf$/i, ""),
+        "Offline report provided by TSC and uploaded by Admin.",
+        "submitted",
+        uploadedAt,
+      );
+      db.prepare("UPDATE projects SET stage = 'admin_report_review' WHERE id = ?").run(
+        row.id,
+      );
+      addEvent(
+        row.id,
+        "tsc_report",
+        user.id,
+        `Admin uploaded the offline TSC report (version ${version}) for review`,
+      );
+    });
+    uploadReport();
+  } else if (isCommitteeFormationDocument && formationHandoff) {
+    const uploadFormationDocument = db.transaction(() => {
+      db.prepare(
+        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        documentId,
+        row.id,
+        parsed.data.category,
+        parsed.data.name,
+        `uploads/${documentId}-${shortName}`,
+        user.id,
+        uploadedAt,
+        parsed.data.mimeType,
+        parsed.data.content,
+      );
+      db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(
+        formationHandoff.nextStage,
+        row.id,
+      );
+      addEvent(
+        row.id,
+        "committee_formation_document",
+        user.id,
+        `${user.role === "hq" ? "Admin HQ" : "Admin (IA)"} uploaded the ${formationHandoff.description}`,
+      );
+    });
+    uploadFormationDocument();
+  } else if (isBidOpeningBoardDocument) {
+    const uploadBoardFormation = db.transaction(() => {
+      db.prepare(
+        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        documentId,
+        row.id,
+        parsed.data.category,
+        parsed.data.name,
+        `uploads/${documentId}-${shortName}`,
+        user.id,
+        uploadedAt,
+        parsed.data.mimeType,
+        parsed.data.content,
+      );
+      db.prepare("UPDATE projects SET stage = 'tec_formation' WHERE id = ?").run(
+        row.id,
+      );
+      addEvent(
+        row.id,
+        "bid_opening_board_formation",
+        user.id,
+        "Admin HQ uploaded the document confirming the Bid Opening Board was formed offline",
+      );
+    });
+    uploadBoardFormation();
+  } else if (isFinalAcceptanceDocument) {
+    const uploadFinalAcceptance = db.transaction(() => {
+      db.prepare(
+        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        documentId,
+        row.id,
+        parsed.data.category,
+        parsed.data.name,
+        `uploads/${documentId}-${shortName}`,
+        user.id,
+        uploadedAt,
+        parsed.data.mimeType,
+        parsed.data.content,
+      );
+      db.prepare("UPDATE projects SET stage = 'completed' WHERE id = ?").run(
+        row.id,
+      );
+      addEvent(
+        row.id,
+        "final_acceptance_upload",
+        user.id,
+        "Admin HQ uploaded the final acceptance document after offline IFD approval; the project is complete",
+      );
+    });
+    uploadFinalAcceptance();
+  } else if (signatureHandoff) {
+    const uploadSignedApproval = db.transaction(() => {
+      db.prepare(
+        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
+        documentId,
+        row.id,
+        parsed.data.category,
+        parsed.data.name,
+        `uploads/${documentId}-${shortName}`,
+        user.id,
+        uploadedAt,
+        parsed.data.mimeType,
+        parsed.data.content,
+      );
+      db.prepare("UPDATE projects SET stage = ? WHERE id = ?").run(
+        signatureHandoff.nextStage,
+        row.id,
+      );
+      addEvent(
+        row.id,
+        "signed_approval_upload",
+        user.id,
+        `${signatureHandoff.uploaderRole === "hq" ? "Admin HQ" : "Admin"} uploaded the signed ${signatureHandoff.approval} document.${signatureHandoff.completion ? ` ${signatureHandoff.completion}.` : ""}`,
+      );
+    });
+    uploadSignedApproval();
+  }
   return res.json({ project: projectView(project(row.id), user.id) });
 });
 app.post("/api/projects/:id/bids", (req, res) => {

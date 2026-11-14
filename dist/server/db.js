@@ -2,41 +2,49 @@ import Database from "better-sqlite3";
 import crypto from "node:crypto";
 import path from "node:path";
 export const stages = [
-    ["demand_submission", "Department demand submission"],
-    ["committee_pending", "TSC committee approval"],
+    ["committee_pending", "TSC committee formation"],
+    ["tsc_formation_document", "Admin uploads TSC formation supporting document"],
+    ["tsc_approval", "AS (IA) approval of TSC"],
+    ["admin_tsc_signature", "Admin uploads signed TSC approval"],
     ["tsc_report", "TSC specification report"],
     ["admin_report_review", "Admin report review"],
     ["as_review", "AS (IA) report approval"],
+    ["admin_as_signature", "Admin uploads signed AS report approval"],
     ["admin_after_as", "Admin review after AS (IA)"],
     ["hq_review", "Admin HQ routes report to DGS"],
-    ["dgs_ia_review", "DGS report review"],
+    ["dgs_ia_review", "DGS offline TSC report approval; HQ uploads signed document"],
+    ["hq_after_dgs", "Admin HQ sends report to CS/SR"],
+    ["cs_sr_review", "CS/SR offline report approval; HQ uploads signed document"],
     ["tender_draft", "Admin HQ draft tender"],
-    ["ia_tender_review", "IA final tender review"],
-    ["admin_issue_tender", "Admin issues final tender"],
-    ["bid_submission", "Admin confirms bid receipt"],
-    ["opening_board_formation", "Bid opening board formation"],
+    ["ia_tender_review", "Admin (IA) optional draft tender review"],
+    ["admin_issue_tender", "Admin HQ issues final tender"],
+    ["bid_submission", "Admin HQ confirms bid receipt"],
+    ["opening_board_formation", "Bid Opening Board offline formation document"],
     ["tec_formation", "TEC formation"],
-    ["tec_approval", "SS approval of TEC"],
+    ["tec_formation_document", "Admin HQ uploads TEC formation supporting document"],
+    ["tec_approval", "SS offline approval of TEC"],
+    ["admin_tec_signature", "Admin HQ uploads signed TEC approval"],
     ["tec_review", "TEC evaluation"],
-    ["x_formation", "X committee formation"],
-    ["price_opening", "Price bid opening"],
+    ["price_opening", "TEC financial bid opening and evaluation"],
     ["tac_formation", "TAC formation"],
+    ["tac_formation_document", "Admin HQ uploads TAC formation supporting document"],
     ["tac_review", "TAC final vendor selection"],
-    ["cfa_approval", "CFA fund release approval"],
-    ["ifd_review", "CFA fund release through IFD"],
+    ["cfa_approval", "CFA offline IFD fund release approval"],
+    ["admin_cfa_signature", "Admin HQ uploads signed CFA approval"],
+    ["ifd_review", "Admin HQ uploads final acceptance document"],
     ["completed", "Completed"],
 ];
 export const users = [
     {
         id: "u-department",
-        name: "User Department (ARC)",
+        name: "Department (offline letter)",
         role: "department",
-        username: "department",
-        password: "department123",
+        username: "",
+        password: "",
     },
     {
         id: "u-admin",
-        name: "System Admin",
+        name: "Admin (IA)",
         role: "admin",
         username: "admin",
         password: "admin123",
@@ -45,15 +53,15 @@ export const users = [
         id: "u-super",
         name: "Super Admin",
         role: "super_admin",
-        username: "superadmin",
-        password: "admin123",
+        username: "",
+        password: "",
     },
     {
         id: "u-dgs",
-        name: "DGS",
+        name: "DGS (offline approval)",
         role: "dgs_ia",
-        username: "dgs",
-        password: "dgs123",
+        username: "",
+        password: "",
     },
     {
         id: "u-hq",
@@ -63,25 +71,25 @@ export const users = [
         password: "hq123",
     },
     {
-        id: "u-tsc",
-        name: "TSC Member",
+        id: "u-x-committee",
+        name: "X Committee",
         role: "committee",
-        username: "tsc",
-        password: "tsc123",
+        username: "",
+        password: "",
     },
     {
         id: "u-tec",
         name: "Technical Evaluation Committee",
         role: "tec",
-        username: "tec",
-        password: "tec123",
+        username: "",
+        password: "",
     },
     {
         id: "u-tac",
         name: "Tender Acceptance Committee",
         role: "tac",
-        username: "tac",
-        password: "tac123",
+        username: "",
+        password: "",
     },
     {
         id: "u-as",
@@ -92,31 +100,31 @@ export const users = [
     },
     {
         id: "u-dgs-ia",
-        name: "DGS",
+        name: "DGS (offline approval)",
         role: "dgs_ia",
-        username: "DGS",
-        password: "DGS123",
+        username: "",
+        password: "",
     },
     {
         id: "u-ia",
-        name: "IA Wing",
+        name: "IA (historical record)",
         role: "ia",
-        username: "ia",
-        password: "ia123",
+        username: "",
+        password: "",
     },
     {
         id: "u-cfa",
         name: "Competent Financial Authority",
         role: "cfa",
-        username: "cfa",
-        password: "cfa123",
+        username: "",
+        password: "",
     },
     {
         id: "u-vendor",
         name: "Demo Vendor",
         role: "vendor",
-        username: "vendor",
-        password: "vendor123",
+        username: "",
+        password: "",
     },
 ];
 const db = new Database(path.join(process.cwd(), "procureflow.sqlite"));
@@ -207,6 +215,9 @@ db.exec(`
     entity_type TEXT NOT NULL, entity_id TEXT, action TEXT NOT NULL,
     details TEXT NOT NULL, at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS workflow_migrations (
+    id TEXT PRIMARY KEY
+  );
 `);
 const queryColumns = db.prepare("PRAGMA table_info(queries)").all();
 if (!queryColumns.some((column) => column.name === "stage"))
@@ -232,6 +243,16 @@ export function seed() {
         insertPerson.run("person-member", "Rajiv Menon", "Technical Officer", "dept-ia", "EMP-003", "Ext. 203", "Cybersecurity");
         insertPerson.run("person-rep", "Nisha Kapoor", "User Department Representative", "dept-user", "EMP-004", "Ext. 204", "Operations");
     }
+    const additionalPeople = [
+        ["person-audit-2", "Aarav Mehta", "Senior Technical Analyst", "dept-ia", "EMP-005", "Ext. 205", "Systems engineering"],
+        ["person-hq-finance", "Divya Iyer", "Deputy Finance Officer", "dept-hq", "EMP-006", "Ext. 206", "Financial review"],
+        ["person-hq-procurement", "Sanjay Bose", "Procurement Officer", "dept-hq", "EMP-007", "Ext. 207", "Tender administration"],
+        ["person-user-engineer", "Priya Sethi", "Technical Specialist", "dept-user", "EMP-008", "Ext. 208", "Infrastructure"],
+        ["person-audit-3", "Kiran Deshmukh", "Audit Officer", "dept-ia", "EMP-009", "Ext. 209", "Compliance"],
+        ["person-user-rep-2", "Farah Ali", "Project Director", "dept-user", "EMP-010", "Ext. 210", "Project delivery"],
+    ];
+    const insertAdditionalPerson = db.prepare("INSERT OR IGNORE INTO people VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
+    additionalPeople.forEach((person) => insertAdditionalPerson.run(...person));
     const vendorCount = db.prepare("SELECT COUNT(*) count FROM vendors").get().count;
     if (vendorCount === 0) {
         db.prepare("INSERT INTO vendors VALUES (?, ?, ?, ?, ?, 1)").run("vendor-demo", "Demo Infrastructure Pvt. Ltd.", "VEND-001", "Arjun Rao", "vendor@example.local");
@@ -241,26 +262,57 @@ export function seed() {
         ["vendor-demo-3", "Apex Medical Technologies", "VEND-003", "Rohan Das", "apex@example.local"],
         ["vendor-demo-4", "Cedar Infrastructure Pvt. Ltd.", "VEND-004", "Fatima Khan", "cedar@example.local"],
         ["vendor-demo-5", "BluePeak Engineering", "VEND-005", "Arun Nair", "bluepeak@example.local"],
+        ["vendor-demo-6", "Summit Energy Solutions", "VEND-006", "Leena Verma", "summit@example.local"],
     ];
     const insertVendor = db.prepare("INSERT OR IGNORE INTO vendors VALUES (?, ?, ?, ?, ?, 1)");
     extraVendors.forEach((vendor) => insertVendor.run(...vendor));
     db.exec(`
+    UPDATE projects SET stage = 'dgs_ia_review' WHERE stage = 'admin_dgs_signature';
+    UPDATE projects SET stage = 'price_opening' WHERE stage = 'x_formation';
     UPDATE projects SET stage = 'tender_draft' WHERE stage IN ('arc_review', 'dgs_approval', 'admin_after_dgs', 'admin_hq_tender');
     UPDATE projects SET stage = 'hq_review' WHERE stage = 'admin_after_second_review';
     UPDATE projects SET stage = 'bid_submission' WHERE stage = 'tender_issued';
     UPDATE projects SET stage = 'ia_tender_review' WHERE stage = 'ia_review';
-    UPDATE projects SET stage = 'tsc_report' WHERE stage = 'board_pending';
-    UPDATE projects SET stage = 'tec_formation' WHERE stage = 'technical_opening';
+    UPDATE projects SET stage = 'committee_pending' WHERE stage = 'demand_submission';
     UPDATE projects
-      SET stage = 'tsc_report'
-      WHERE stage = 'committee_pending'
+      SET stage = 'committee_pending'
+      WHERE stage = 'board_pending'
+      AND NOT EXISTS (
+        SELECT 1 FROM committees
+        WHERE committees.project_id = projects.id
+          AND committees.type = 'Technical Scrutiny Committee'
+      );
+    UPDATE projects
+      SET stage = 'tsc_approval'
+      WHERE stage IN ('board_pending', 'committee_pending')
       AND EXISTS (
         SELECT 1 FROM committees
         WHERE committees.project_id = projects.id
           AND committees.type = 'Technical Scrutiny Committee'
-          AND committees.status = 'approved'
+      );
+    UPDATE projects SET stage = 'tec_formation' WHERE stage = 'technical_opening';
+    UPDATE committees
+      SET status = 'pending'
+      WHERE type = 'Technical Scrutiny Committee'
+      AND status = 'approved'
+      AND project_id IN (
+        SELECT id FROM projects WHERE stage = 'tsc_approval'
       );
   `);
+    const committeeDocumentMigration = "committee_formation_documents_v1";
+    const migrated = db
+        .prepare("SELECT 1 FROM workflow_migrations WHERE id = ?")
+        .get(committeeDocumentMigration);
+    if (!migrated) {
+        db.transaction(() => {
+            db.exec(`
+        UPDATE projects SET stage = 'tsc_formation_document' WHERE stage = 'tsc_approval';
+        UPDATE projects SET stage = 'tec_formation_document' WHERE stage = 'tec_approval';
+        UPDATE projects SET stage = 'tac_formation_document' WHERE stage = 'tac_review';
+      `);
+            db.prepare("INSERT INTO workflow_migrations (id) VALUES (?)").run(committeeDocumentMigration);
+        })();
+    }
     db.exec(`
     CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id, at);
     CREATE INDEX IF NOT EXISTS idx_queries_project ON queries(project_id, status);
@@ -280,10 +332,11 @@ export function projectView(row, viewerId) {
     const viewerRole = users.find((user) => user.id === viewerId)?.role;
     const queryResponderRoles = {
         demand_submission: ["admin"],
+        tsc_approval: ["as_ia", "admin"],
         as_review: ["as_ia", "admin"],
-        dgs_ia_review: ["dgs_ia", "hq"],
+        dgs_ia_review: ["hq"],
         hq_review: ["hq", "admin"],
-        tec_approval: ["super_admin", "admin"],
+        tec_approval: ["admin", "hq"],
     };
     const project = {
         id: row.id,

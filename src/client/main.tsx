@@ -11,11 +11,11 @@ import "./styles.css";
 
 const roles: Record<string, string> = {
   department: "Department (ARC)",
-  admin: "Admin",
+  admin: "Admin (IA)",
   super_admin: "Super Admin",
   hq: "Admin HQ",
   committee: "Committee Member",
-  ia: "IA Wing",
+  ia: "IA (historical record)",
   cfa: "Competent Financial Authority",
   vendor: "Vendor",
   as_ia: "AS (IA)",
@@ -49,48 +49,97 @@ const pdfToDataUrl = async (file: File) => {
 };
 
 const stageOrder = [
-  "demand_submission", "committee_pending", "tsc_report", "admin_report_review",
-  "as_review", "admin_after_as", "hq_review", "dgs_ia_review",
+  "committee_pending", "tsc_formation_document", "tsc_approval",
+  "admin_tsc_signature", "tsc_report",
+  "admin_report_review", "as_review", "admin_as_signature", "admin_after_as",
+  "hq_review", "dgs_ia_review", "hq_after_dgs", "cs_sr_review",
   "tender_draft", "ia_tender_review", "admin_issue_tender", "bid_submission",
-  "opening_board_formation", "tec_formation",
-  "tec_approval", "tec_review", "x_formation", "price_opening",
-  "tac_formation", "tac_review", "cfa_approval", "ifd_review", "completed",
+  "opening_board_formation", "tec_formation", "tec_formation_document",
+  "tec_approval", "admin_tec_signature", "tec_review",
+  "price_opening", "tac_formation", "tac_formation_document", "tac_review",
+  "cfa_approval", "admin_cfa_signature", "ifd_review", "completed",
 ];
 const committeeTypeByStage: Record<string, string> = {
   committee_pending: "Technical Scrutiny Committee",
-  opening_board_formation: "Bid Opening Board",
+  tsc_formation_document: "Technical Scrutiny Committee",
+  tsc_approval: "Technical Scrutiny Committee",
   tec_formation: "Technical Evaluation Committee",
+  tec_formation_document: "Technical Evaluation Committee",
   tec_approval: "Technical Evaluation Committee",
   tec_review: "Technical Evaluation Committee",
-  x_formation: "Financial Evaluation Committee (X)",
-  price_opening: "Financial Evaluation Committee (X)",
+  price_opening: "Technical Evaluation Committee",
   tac_formation: "Tender Acceptance Committee (TAC)",
+  tac_formation_document: "Tender Acceptance Committee (TAC)",
   tac_review: "Tender Acceptance Committee (TAC)",
+};
+const formationDocumentStages: Record<
+  string,
+  { category: string; label: string; uploaderRole: string }
+> = {
+  tsc_formation_document: {
+    category: "tsc_formation_support",
+    label: "TSC formation supporting document",
+    uploaderRole: "admin",
+  },
+  tec_formation_document: {
+    category: "tec_formation_support",
+    label: "TEC formation supporting document",
+    uploaderRole: "hq",
+  },
+  tac_formation_document: {
+    category: "tac_formation_support",
+    label: "TAC formation supporting document",
+    uploaderRole: "hq",
+  },
+};
+const signedApprovalStages: Record<string, string> = {
+  admin_tsc_signature: "AS (IA) TSC formation approval",
+  admin_as_signature: "AS (IA) TSC report approval",
+  dgs_ia_review: "DGS offline TSC report approval",
+  cs_sr_review: "CS/SR offline TSC report approval",
+  admin_tec_signature: "SS TEC approval",
+  admin_cfa_signature: "CFA fund release approval",
+};
+const signedApprovalRoles: Record<string, string> = {
+  admin_tsc_signature: "admin",
+  admin_as_signature: "admin",
+  dgs_ia_review: "hq",
+  cs_sr_review: "hq",
+  admin_tec_signature: "hq",
+  admin_cfa_signature: "hq",
 };
 const stageNextStep = (stage: string) => {
   const steps: Record<string, string> = {
-    demand_submission: "Next: Admin (admin / admin123) reviews and accepts the department demand.",
-    committee_pending: "Next: Admin (admin / admin123) forms the three-member TSC.",
-    tsc_report: "Next: TSC (tsc / tsc123) submits the specification report to Admin.",
-    admin_report_review: "Next: Admin (admin / admin123) sends the TSC report to AS (IA).",
-    as_review: "Next: AS (AS / AS123) approves the report and returns it to Admin.",
-    admin_after_as: "Next: Admin (admin / admin123) sends the report to Admin HQ (hq / hq123).",
-    hq_review: "Next: Admin HQ (hq / hq123) sends the report to DGS (dgs / dgs123) for review.",
-    dgs_ia_review: "Next: DGS (dgs / dgs123) reviews the report and returns it to Admin HQ.",
-    tender_draft: "Next: Admin HQ (hq / hq123) sends the draft tender PDF to IA.",
-    ia_tender_review: "Next: IA (ia / ia123) edits and publishes the final tender with a deadline.",
-    admin_issue_tender: "Next: Admin (admin / admin123) sends the final tender to vendors.",
-    bid_submission: "After the due time, Admin (admin / admin123) records bids received.",
-    opening_board_formation: "Next: Admin (admin / admin123) forms the bid opening board.",
-    tec_formation: "The Bid Opening Board opens technical bids offline. Next: Admin (admin / admin123) forms TEC and sends it to SS.",
-    tec_approval: "Next: SS (superadmin / admin123) queries or approves TEC.",
-    tec_review: "Next: TEC (tec / tec123) submits its qualified-vendor report.",
-    x_formation: "Next: Admin (admin / admin123) forms the X committee.",
-    price_opening: "Next: X committee (tsc / tsc123) evaluates bids and selects the top three.",
-    tac_formation: "Next: Admin (admin / admin123) forms TAC, including one IA member.",
-    tac_review: "Next: TAC (tac / tac123) submits the selected vendor, price and specifications.",
-    cfa_approval: "Next: CFA (cfa / cfa123) releases funds through IFD.",
-    ifd_review: "Next: IA (ia / ia123) confirms IFD release and completes the project.",
+    committee_pending: "Next: Admin (IA) (admin / admin123) forms or revises the three-member TSC.",
+    tsc_formation_document: "Next: Admin (IA) uploads the TSC formation supporting document before AS (IA) approval.",
+    tsc_approval: "Next: AS (IA) (AS / AS123) reviews and approves the proposed TSC; AS may query Admin (IA).",
+    admin_tsc_signature: "Next: Admin (IA) uploads AS (IA)'s signed TSC formation approval.",
+    tsc_report: "Next: Admin (IA) (admin / admin123) uploads the specifications report provided offline by TSC.",
+    admin_report_review: "Next: Admin (IA) (admin / admin123) sends the TSC report to AS (IA).",
+    as_review: "Next: AS (IA) (AS / AS123) gives the first approval of the TSC report.",
+    admin_as_signature: "Next: Admin (IA) uploads AS (IA)'s signed report approval.",
+    admin_after_as: "Next: Admin (IA) (admin / admin123) sends the report to Admin HQ (hq / hq123).",
+    hq_review: "Next: Admin HQ (hq / hq123) sends the report to DGS for offline approval.",
+    dgs_ia_review: "DGS approval is offline. After the report returns to HQ, Admin HQ uploads the signed DGS approval PDF.",
+    hq_after_dgs: "Admin HQ sends the report to CS/SR for offline approval after DGS approval.",
+    cs_sr_review: "CS/SR approval is offline. After the report returns to HQ, Admin HQ uploads the signed approval PDF to begin tender processing.",
+    tender_draft: "Next: Admin HQ (hq / hq123) uploads the draft tender and sends it only to Admin (IA) for review.",
+    ia_tender_review: "Admin (IA) may review the draft and send suggestions if needed; Admin HQ (hq / hq123) publishes the final tender with a deadline.",
+    admin_issue_tender: "Next: Admin HQ (hq / hq123) sends the final tender to vendors.",
+    bid_submission: "After the due time, Admin HQ (hq / hq123) records bids received.",
+    opening_board_formation: "The Bid Opening Board is formed offline; Admin HQ uploads its formation document to continue.",
+    tec_formation: "The Bid Opening Board opens technical bids offline. Next: Admin HQ (hq / hq123) forms TEC.",
+    tec_formation_document: "Next: Admin HQ uploads the TEC formation supporting document before recording SS's offline decision.",
+    tec_approval: "Next: Admin HQ (hq / hq123) records SS's offline approval or query.",
+    admin_tec_signature: "Next: Admin HQ uploads SS's signed TEC approval.",
+    tec_review: "Next: Admin HQ (hq / hq123) records TEC's technical qualification report.",
+    price_opening: "Next: Admin HQ (hq / hq123) records TEC's financial bid opening and evaluation for technically qualified vendors.",
+    tac_formation: "Next: Admin HQ (hq / hq123) forms TAC, including a member from the Inspection & Audit department.",
+    tac_formation_document: "Next: Admin HQ uploads the TAC formation supporting document.",
+    tac_review: "Next: Admin HQ (hq / hq123) records the TAC recommendation.",
+    cfa_approval: "Next: Admin HQ (hq / hq123) records CFA's offline approval through IFD.",
+    admin_cfa_signature: "Next: Admin HQ uploads CFA's signed approval document.",
+    ifd_review: "After offline IFD approval, Admin HQ (hq / hq123) uploads the final acceptance document.",
     completed: "Procurement workflow complete.",
   };
   return steps[stage] ?? "";
@@ -149,7 +198,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
         <div className="demo">
           <b>Demo users</b>
           <br />
-          department / department123 · admin / admin123
+          admin / admin123 · AS / AS123 · hq / hq123
         </div>
       </section>
     </main>
@@ -210,7 +259,7 @@ function App() {
             ▤ <span>All projects</span>
             <b>{active}</b>
           </button>
-          {user.role === "department" && (
+          {user.role === "admin" && (
             <button onClick={() => setShowCreate(true)}>
               ＋ <span>New project</span>
             </button>
@@ -288,7 +337,7 @@ function App() {
             <span className="network">
               <span className="status-dot" /> System online
             </span>
-            {user.role === "department" && (
+            {user.role === "admin" && (
               <button
                 className="button primary"
                 onClick={() => setShowCreate(true)}
@@ -337,7 +386,6 @@ function App() {
       )}
       {showCreate && (
         <CreateDialog
-          role={user.role}
           onClose={() => setShowCreate(false)}
           onCreated={async (p) => {
             await refresh();
@@ -745,20 +793,35 @@ function ProjectDrawer({
     terms: "Complete the assigned procurement board review and submit its decision/report.",
   });
   const index = data.stages.findIndex((s) => s.id === project.stage);
-  const next = data.stages[index + 1];
   const committeeType = committeeTypeByStage[project.stage];
-  const committee = data.committees.find(
-    (item) =>
-      item.project_id === project.id &&
-      (!committeeType || item.type === committeeType),
+  const formationDocument = formationDocumentStages[project.stage];
+  const committee = data.committees
+    .filter(
+      (item) =>
+        item.project_id === project.id &&
+        (!committeeType || item.type === committeeType),
+    )
+    .sort((a, b) => b.version - a.version)[0];
+  const selectedCommitteeMembers = data.people.filter((person) =>
+    committeeForm.memberIds.includes(person.id),
   );
+  const isTscRevision =
+    user.role === "admin" &&
+    project.stage === "committee_pending" &&
+    committee?.status === "changes_requested";
+  useEffect(() => {
+    if (isTscRevision && committee) {
+      setCommitteeForm({
+        chairmanId: committee.chairman?.id ?? committee.members[0]?.id ?? "",
+        memberIds: committee.members.map((member) => member.id),
+        constitutionDate: committee.constitution_date,
+        terms: committee.terms,
+      });
+    }
+  }, [committee?.id, committee?.status]);
   const cfaRelease = project.workflowRecords.find(
     (record) => record.kind === "cfa_fund_release",
   );
-  const canAdvance =
-    Boolean(next) &&
-    user.role === "admin" &&
-    project.stage === "demand_submission";
   const submit = async (url: string, body: object) => {
     try {
       await api(url, { method: "POST", body: JSON.stringify(body) });
@@ -794,6 +857,14 @@ function ProjectDrawer({
       await onRefresh();
       if (category === "tsc_report") {
         if (reportInput.current) reportInput.current.value = "";
+      }
+      if (
+        category === "signed_approval" ||
+        category === "bid_opening_board_formation" ||
+        category.endsWith("_formation_support") ||
+        category === "final_acceptance"
+      ) {
+        if (workflowInput.current) workflowInput.current.value = "";
       }
     } catch (e) {
       setError((e as Error).message);
@@ -953,43 +1024,113 @@ function ProjectDrawer({
           </section>
         ) : null}
         {error && <div className="error">{error}</div>}
-        {user.role === "admin" &&
+        {((user.role === "admin" && project.stage === "committee_pending") ||
+          (user.role === "hq" &&
+            ["tec_formation", "tac_formation"].includes(project.stage))) &&
           committeeType &&
-          ["committee_pending", "opening_board_formation", "tec_formation", "x_formation", "tac_formation"].includes(project.stage) &&
-          (!committee || committee.status === "rejected") && (
+          (!committee ||
+            committee.status === "rejected" ||
+            isTscRevision) && (
             <section className="action-box">
               <span className="eyebrow">COMMITTEE FORMATION</span>
-              <h3>Form {committeeType}</h3>
+              <h3>{isTscRevision ? "Update TSC membership" : `Form ${committeeType}`}</h3>
               <p className="subtle">
                 Select exactly three members and one of them as chairperson.
                 {project.stage === "tac_formation" &&
-                  " At least one TAC member must belong to IA."}
+                  " At least one TAC member must belong to the Inspection & Audit department."}
+                {isTscRevision &&
+                  " AS (IA) requested changes. Resubmit the revised committee, then upload its supporting document for AS (IA) review."}
               </p>
-              <label>
-                Three members
-                <select
-                  multiple
-                  value={committeeForm.memberIds}
-                  onChange={(e) =>
-                    setCommitteeForm({
-                      ...committeeForm,
-                      memberIds: Array.from(e.target.selectedOptions).map(
-                        (option) => option.value,
-                      ),
-                    })
-                  }
+              <div className="committee-member-picker">
+                <div className="committee-member-options">
+                  <div className="committee-member-options-heading">
+                    <strong>Select three members</strong>
+                    <span>{committeeForm.memberIds.length} of 3 selected</span>
+                  </div>
+                  <div className="committee-person-options">
+                    {data.people.map((person) => (
+                      <label
+                        className={`committee-person-option${committeeForm.memberIds.includes(person.id) ? " is-selected" : ""}`}
+                        key={person.id}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={committeeForm.memberIds.includes(person.id)}
+                          disabled={
+                            !committeeForm.memberIds.includes(person.id) &&
+                            committeeForm.memberIds.length >= 3
+                          }
+                          onChange={(event) =>
+                            setCommitteeForm((current) => {
+                              const memberIds = event.target.checked
+                                ? current.memberIds.length < 3 &&
+                                  !current.memberIds.includes(person.id)
+                                  ? [...current.memberIds, person.id]
+                                  : current.memberIds
+                                : current.memberIds.filter(
+                                    (memberId) => memberId !== person.id,
+                                  );
+                              return {
+                                ...current,
+                                memberIds,
+                                chairmanId:
+                                  current.chairmanId === person.id
+                                    ? memberIds[0] ?? ""
+                                    : current.chairmanId || memberIds[0] || "",
+                              };
+                            })
+                          }
+                        />
+                        <span className="committee-person-details">
+                          <strong>{person.name}</strong>
+                          <small>
+                            {person.designation} · {person.department_name}
+                          </small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <aside
+                  className="committee-member-summary"
+                  aria-label="Selected committee members"
+                  aria-live="polite"
                 >
-                  {data.people.map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.name} · {person.designation}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <div className="committee-member-summary-header">
+                    <strong>Selected members</strong>
+                    <span>{committeeForm.memberIds.length} of 3</span>
+                  </div>
+                  {selectedCommitteeMembers.length > 0 ? (
+                    <ul className="committee-member-list">
+                      {selectedCommitteeMembers.map((person, index) => (
+                        <li className="committee-member-card" key={person.id}>
+                          <span className="committee-member-number">
+                            {index + 1}
+                          </span>
+                          <span className="committee-member-info">
+                            <strong>{person.name}</strong>
+                            <small>
+                              {person.designation} · {person.department_name}
+                            </small>
+                          </span>
+                          {person.id === committeeForm.chairmanId && (
+                            <span className="committee-member-chair">
+                              Chair
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="subtle">Select members from the list.</p>
+                  )}
+                </aside>
+              </div>
               <label>
                 Chairperson
                 <select
                   value={committeeForm.chairmanId}
+                  disabled={selectedCommitteeMembers.length === 0}
                   onChange={(e) =>
                     setCommitteeForm({
                       ...committeeForm,
@@ -997,7 +1138,7 @@ function ProjectDrawer({
                     })
                   }
                 >
-                  {data.people.map((person) => (
+                  {selectedCommitteeMembers.map((person) => (
                     <option key={person.id} value={person.id}>
                       {person.name}
                     </option>
@@ -1017,23 +1158,74 @@ function ProjectDrawer({
                 />
               </label>
               <button className="button primary" onClick={submitCommittee}>
-                Form {committeeType}
+                {isTscRevision ? "Resubmit revised TSC" : `Form ${committeeType}`}
               </button>
             </section>
           )}
-        {user.role === "super_admin" &&
+          {formationDocument &&
+            user.role === formationDocument.uploaderRole && (
+              <section className="action-box">
+                <span className="eyebrow">COMMITTEE FORMATION RECORD</span>
+                <h3>Upload {formationDocument.label}</h3>
+                <input
+                  ref={workflowInput}
+                  type="file"
+                  accept="application/pdf,.pdf"
+                />
+                <button
+                  className="button primary"
+                  onClick={() =>
+                    uploadDocument(
+                      formationDocument.category,
+                      workflowInput.current?.files?.[0],
+                    )
+                  }
+                >
+                  Upload document and continue
+                </button>
+              </section>
+            )}
+        {user.role === "hq" &&
+          project.stage === "opening_board_formation" && (
+            <section className="action-box">
+              <span className="eyebrow">OFFLINE BID OPENING BOARD</span>
+              <h3>Upload the document confirming the board was formed</h3>
+              <p className="subtle">
+                The Bid Opening Board is formed offline. Upload its formation
+                document to continue.
+              </p>
+              <input
+                ref={workflowInput}
+                type="file"
+                accept="application/pdf,.pdf"
+              />
+              <button
+                className="button primary"
+                onClick={() =>
+                  uploadDocument(
+                    "bid_opening_board_formation",
+                    workflowInput.current?.files?.[0],
+                  )
+                }
+              >
+                Upload formation document and continue
+              </button>
+            </section>
+          )}
+        {user.role === "hq" &&
           project.stage === "tec_approval" &&
           committee?.status === "pending" && (
           <section className="action-box approval-box">
-            <span className="eyebrow">SUPER ADMIN DECISION</span>
-            <h3>Review and approve TEC formation</h3>
+            <span className="eyebrow">ADMIN HQ · SS OFFLINE DECISION</span>
+            <h3>Record SS's decision on TEC formation</h3>
             <p className="subtle">
-              SS may query Admin or approve the proposed TEC.
+              SS has no application login. Record its offline query or approval;
+              Admin HQ uploads the signed approval document after approval.
             </p>
             <textarea
               value={decisionRemarks}
               onChange={(e) => setDecisionRemarks(e.target.value)}
-              placeholder="Record approval remarks or a query for Admin…"
+              placeholder="SS approval remarks or query for Admin HQ…"
             />
             <div className="action-row">
               <button
@@ -1061,49 +1253,67 @@ function ProjectDrawer({
             </div>
           </section>
         )}
-        {canAdvance && (
-          <section className="action-box">
-            <span className="eyebrow">
-              {project.stage === "demand_submission" ? "DEMAND REVIEW" : "BID OPENING"}
-            </span>
-            <h3>
-              {project.stage === "demand_submission"
-                ? "Accept the department procurement demand"
-                : "Open technical bids"}
-            </h3>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Add an approval or handover note…"
-            />
-            <button
-              className="button primary"
-              onClick={() =>
-                submit(`/api/projects/${project.id}/advance`, { note })
-              }
-            >
-              {project.stage === "demand_submission"
-                ? "Accept demand →"
-                : "Open technical bids →"}
-            </button>
-          </section>
-        )}
-        {user.role === "committee" && project.stage === "tsc_report" && (
+        {user.role === "as_ia" &&
+          project.stage === "tsc_approval" &&
+          committee?.status === "pending" && (
+            <section className="action-box approval-box">
+              <span className="eyebrow">AS (IA) APPROVAL</span>
+              <h3>Review and approve TSC formation</h3>
+              <p className="subtle">
+                Query Admin if clarification is needed, or return the TSC to
+                Admin (IA) for member changes. Approval locks the membership.
+              </p>
+              <textarea
+                value={decisionRemarks}
+                onChange={(e) => setDecisionRemarks(e.target.value)}
+                placeholder="Approval remarks or query for Admin…"
+              />
+              <div className="action-row">
+                <button
+                  className="button secondary"
+                  onClick={() =>
+                    submit(`/api/committees/${committee.id}/decision`, {
+                      action: "query",
+                      remarks: decisionRemarks,
+                    })
+                  }
+                >
+                  Raise query
+                </button>
+                <button
+                  className="button secondary"
+                  onClick={() =>
+                    submit(`/api/committees/${committee.id}/decision`, {
+                      action: "request_changes",
+                      remarks: decisionRemarks,
+                    })
+                  }
+                >
+                  Request member changes
+                </button>
+                <button
+                  className="button primary"
+                  onClick={() =>
+                    submit(`/api/committees/${committee.id}/decision`, {
+                      action: "approve",
+                      remarks: decisionRemarks,
+                    })
+                  }
+                >
+                  Approve TSC as final committee
+                </button>
+              </div>
+            </section>
+          )}
+        {user.role === "admin" && project.stage === "tsc_report" && (
           <section className="action-box">
             <span className="eyebrow">TSC REPORT</span>
-            <h3>Send specification report to Admin</h3>
-            <input
-              value={reportTitle}
-              onChange={(e) => setReportTitle(e.target.value)}
-              placeholder="Report title"
-            />
-            <textarea
-              value={reportContent}
-              onChange={(e) => setReportContent(e.target.value)}
-              placeholder="Record technical scrutiny, observations and recommendation…"
-            />
+            <h3>Upload the TSC report received offline</h3>
+            <p className="subtle">
+              TSC provides the report to Admin offline. Upload its PDF here to continue.
+            </p>
             <label>
-              Optional PDF attachment
+              TSC report PDF
               <input
                 ref={reportInput}
                 type="file"
@@ -1112,29 +1322,48 @@ function ProjectDrawer({
             </label>
             <div className="action-row">
               <button
-                className="button secondary"
+                className="button primary"
                 onClick={() =>
                   uploadDocument(
                     "tsc_report",
                     reportInput.current?.files?.[0],
-                    reportTitle ? `${reportTitle}.pdf` : undefined,
                   )
                 }
               >
-                Upload report PDF
-              </button>
-              <button
-                className="button primary"
-                onClick={() =>
-                  submit(`/api/projects/${project.id}/tsc-report`, {
-                    title: reportTitle,
-                    content: reportContent,
-                  })
-                }
-              >
-                Submit report to Admin
+                Upload TSC report and continue
               </button>
             </div>
+          </section>
+        )}
+        {user.role === signedApprovalRoles[project.stage] &&
+          signedApprovalStages[project.stage] && (
+          <section className="action-box">
+            <span className="eyebrow">SIGNED APPROVAL DOCUMENT</span>
+            <h3>Upload signed {signedApprovalStages[project.stage]} PDF</h3>
+            <p className="subtle">
+              {roles[user.role]} must upload the signed approval PDF before this
+              stage can continue.
+              {project.stage === "cs_sr_review" &&
+                " CS/SR approval is handled offline; after the report returns to HQ, Admin HQ uploads the signed document."}
+              {project.stage === "dgs_ia_review" &&
+                " DGS approval is handled offline; after the report returns to HQ, Admin HQ uploads the signed document."}
+            </p>
+            <input
+              ref={workflowInput}
+              type="file"
+              accept="application/pdf,.pdf"
+            />
+            <button
+              className="button primary"
+              onClick={() =>
+                uploadDocument(
+                  "signed_approval",
+                  workflowInput.current?.files?.[0],
+                )
+              }
+            >
+              Upload signed approval and continue
+            </button>
           </section>
         )}
         {user.role === "admin" && project.stage === "admin_report_review" && (
@@ -1172,7 +1401,7 @@ function ProjectDrawer({
                 Raise query
               </button>
               <button className="button primary" onClick={() => submit(`/api/projects/${project.id}/as-decision`, { action: "approve", remarks: decisionRemarks })}>
-                Approve and return to Admin
+                Approve report
               </button>
             </div>
           </section>
@@ -1189,36 +1418,45 @@ function ProjectDrawer({
         {user.role === "hq" && project.stage === "hq_review" && (
           <section className="action-box">
             <span className="eyebrow">ADMIN HQ ROUTING</span>
-            <h3>Send the report to DGS for review</h3>
+            <h3>Send the report for offline DGS approval</h3>
             <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Forwarding remarks…" />
             <button className="button primary" onClick={() => submitWorkflowAction("forward_to_dgs_review", { remarks: decisionRemarks })}>
-              Send to DGS
+              Send to DGS offline
             </button>
           </section>
         )}
-        {user.role === "dgs_ia" && project.stage === "dgs_ia_review" && (
-          <section className="action-box approval-box">
-            <span className="eyebrow">DGS REVIEW</span>
-            <h3>Review the TSC report and return it to Admin HQ</h3>
-            {project.reports[0] && (
-              <div className="report-preview">
-                <b>{project.reports[0].title}</b>
-                <p>{project.reports[0].content}</p>
-              </div>
-            )}
-            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Approval remarks or query…" />
-            <div className="action-row">
-              <button className="button secondary" onClick={() => submitWorkflowAction("second_review_decision", { decision: "query", remarks: decisionRemarks })}>Raise query</button>
-              <button className="button primary" onClick={() => submitWorkflowAction("second_review_decision", { decision: "approve", remarks: decisionRemarks })}>Approve and return to Admin HQ</button>
-            </div>
+        {user.role === "hq" && project.stage === "hq_after_dgs" && (
+          <section className="action-box">
+            <span className="eyebrow">ADMIN HQ ROUTING</span>
+            <h3>Send the report for offline CS/SR approval</h3>
+            <p className="subtle">
+              The DGS approval document has been uploaded by Admin HQ. Send the
+              report to CS/SR offline; after approval, it returns to HQ for the
+              signed CS/SR document upload.
+            </p>
+            <textarea
+              value={decisionRemarks}
+              onChange={(e) => setDecisionRemarks(e.target.value)}
+              placeholder="Forwarding remarks…"
+            />
+            <button
+              className="button primary"
+              onClick={() =>
+                submitWorkflowAction("forward_to_cs_sr_review", {
+                  remarks: decisionRemarks,
+                })
+              }
+            >
+              Send to CS/SR offline
+            </button>
           </section>
         )}
         {user.role === "hq" && project.stage === "tender_draft" && (
           <section className="action-box">
             <span className="eyebrow">ADMIN HQ DRAFT TENDER</span>
-            <h3>Upload and send draft tender to IA</h3>
+            <h3>Upload draft tender and send it only to Admin (IA)</h3>
             <input ref={workflowInput} type="file" accept="application/pdf,.pdf" />
-            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Note for IA…" />
+            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Notes for Admin (IA)…" />
             <button className="button primary" onClick={async () => {
               try {
                 const file = workflowInput.current?.files?.[0];
@@ -1229,16 +1467,29 @@ function ProjectDrawer({
                 });
                 if (workflowInput.current) workflowInput.current.value = "";
               } catch (e) { setError((e as Error).message); }
-            }}>Send draft to IA</button>
+            }}>Send draft to Admin (IA) only</button>
           </section>
         )}
-        {user.role === "ia" && project.stage === "ia_tender_review" && (
+        {user.role === "admin" && project.stage === "ia_tender_review" && (
           <section className="action-box">
-            <span className="eyebrow">IA FINAL TENDER REVIEW</span>
-            <h3>Publish final tender with deadline</h3>
+            <span className="eyebrow">ADMIN (IA) DRAFT REVIEW</span>
+            <h3>Review the draft and send suggestions if needed</h3>
+            <p className="subtle">
+              Admin HQ publishes the final tender. This review is optional.
+            </p>
+            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Suggestions for Admin HQ…" />
+            <button className="button secondary" disabled={decisionRemarks.trim().length < 2} onClick={() => submitWorkflowAction("submit_draft_suggestions", { remarks: decisionRemarks })}>
+              Send suggestions to Admin HQ
+            </button>
+          </section>
+        )}
+        {user.role === "hq" && project.stage === "ia_tender_review" && (
+          <section className="action-box">
+            <span className="eyebrow">ADMIN HQ FINAL TENDER</span>
+            <h3>Review suggestions and publish the final tender</h3>
             <input ref={workflowInput} type="file" accept="application/pdf,.pdf" />
             <label>Tender deadline<input type="datetime-local" value={tenderDeadline} onChange={(e) => setTenderDeadline(e.target.value)} /></label>
-            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Changes made and publication remarks…" />
+            <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Publication remarks…" />
             <button className="button primary" onClick={async () => {
               try {
                 const file = workflowInput.current?.files?.[0];
@@ -1253,7 +1504,7 @@ function ProjectDrawer({
             }}>Publish final tender</button>
           </section>
         )}
-        {user.role === "admin" && project.stage === "admin_issue_tender" && (
+        {user.role === "hq" && project.stage === "admin_issue_tender" && (
           <section className="action-box">
             <span className="eyebrow">ISSUE TENDER</span>
             <h3>Send final tender to vendors</h3>
@@ -1261,7 +1512,7 @@ function ProjectDrawer({
             <button className="button primary" onClick={() => submitWorkflowAction("issue_tender")}>Send tender to vendors</button>
           </section>
         )}
-        {user.role === "admin" && project.stage === "bid_submission" && (
+        {user.role === "hq" && project.stage === "bid_submission" && (
           <section className="action-box">
             <span className="eyebrow">BID RECEIPT</span>
             <h3>Record bids received after the deadline</h3>
@@ -1270,68 +1521,66 @@ function ProjectDrawer({
             <button className="button primary" onClick={() => submitWorkflowAction("confirm_bids", { count: bidCount, remarks: decisionRemarks })}>Confirm bid receipt</button>
           </section>
         )}
-        {user.role === "tec" && project.stage === "tec_review" && (
+        {user.role === "hq" && project.stage === "tec_review" && (
           <section className="action-box">
-            <span className="eyebrow">TEC TECHNICAL REPORT</span>
-            <h3>Record technically qualified vendors</h3>
+            <span className="eyebrow">TEC TECHNICAL REPORT · ADMIN HQ</span>
+            <h3>Record TEC's technical qualification report</h3>
             <input value={reportTitle} onChange={(e) => setReportTitle(e.target.value)} placeholder="Report title" />
             <textarea value={reportContent} onChange={(e) => setReportContent(e.target.value)} placeholder="Evaluation observations and qualification rationale…" />
             <label>Qualified vendors<select multiple value={qualifiedVendorIds} onChange={(e) => setQualifiedVendorIds(Array.from(e.target.selectedOptions).map((option) => option.value))}>
               {data.vendors.filter((vendor) => vendor.active).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
             </select></label>
-            <button className="button primary" onClick={() => submitWorkflowAction("submit_tec_report", { title: reportTitle, content: reportContent, qualifiedVendorIds })}>Send TEC report to Admin</button>
+            <button className="button primary" onClick={() => submitWorkflowAction("submit_tec_report", { title: reportTitle, content: reportContent, qualifiedVendorIds })}>Record TEC report and continue</button>
           </section>
         )}
-        {user.role === "committee" && project.stage === "price_opening" && (
+        {user.role === "hq" && project.stage === "price_opening" && (
           <section className="action-box">
-            <span className="eyebrow">X COMMITTEE FINANCIAL EVALUATION</span>
-            <h3>Select the top three qualified vendors</h3>
+            <span className="eyebrow">TEC FINANCIAL BID OPENING · ADMIN HQ</span>
+            <h3>Record TEC's financial bid opening and top three qualified vendors</h3>
             <label>Top three vendors<select multiple value={topVendorIds} onChange={(e) => setTopVendorIds(Array.from(e.target.selectedOptions).map((option) => option.value))}>
               {data.vendors.filter((vendor) => vendor.active && (project.workflowRecords.find((record) => record.kind === "tec_report")?.data.qualifiedVendorIds as string[] | undefined)?.includes(vendor.id)).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
             </select></label>
             <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="Comparative financial analysis and report…" />
-            <button className="button primary" onClick={() => submitWorkflowAction("submit_x_report", { topVendorIds, remarks: decisionRemarks })}>Send X committee report to Admin</button>
+            <button className="button primary" onClick={() => submitWorkflowAction("submit_tec_financial_report", { topVendorIds, remarks: decisionRemarks })}>Record TEC financial report and continue</button>
           </section>
         )}
-        {user.role === "tac" && project.stage === "tac_review" && (
+        {user.role === "hq" && project.stage === "tac_review" && (
           <section className="action-box">
-            <span className="eyebrow">TAC FINAL SELECTION</span>
-            <h3>Select final vendor and record award basis</h3>
+            <span className="eyebrow">TAC FINAL SELECTION · ADMIN HQ</span>
+            <h3>Record TAC's final vendor and award basis</h3>
             <label>Final vendor<select value={tacVendorId} onChange={(e) => setTacVendorId(e.target.value)}>
               <option value="">Select vendor</option>
-              {data.vendors.filter((vendor) => (project.workflowRecords.find((record) => record.kind === "x_report")?.data.topVendorIds as string[] | undefined)?.includes(vendor.id)).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+              {data.vendors.filter((vendor) => (project.workflowRecords.find((record) => record.kind === "tec_financial_report" || record.kind === "x_report")?.data.topVendorIds as string[] | undefined)?.includes(vendor.id)).map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
             </select></label>
             <label>Selected price<input type="number" min="0.01" value={tacPrice} onChange={(e) => setTacPrice(e.target.value)} /></label>
             <textarea value={tacSpecifications} onChange={(e) => setTacSpecifications(e.target.value)} placeholder="Final vendor technical specifications…" />
             <textarea value={decisionRemarks} onChange={(e) => setDecisionRemarks(e.target.value)} placeholder="TAC selection report and justification…" />
-            <button className="button primary" onClick={() => submitWorkflowAction("submit_tac_report", { vendorId: tacVendorId, price: tacPrice, technicalSpecifications: tacSpecifications, remarks: decisionRemarks })}>Send TAC report</button>
+            <button className="button primary" onClick={() => submitWorkflowAction("submit_tac_report", { vendorId: tacVendorId, price: tacPrice, technicalSpecifications: tacSpecifications, remarks: decisionRemarks })}>Send TAC report to Admin HQ</button>
           </section>
         )}
-        {user.role === "cfa" && project.stage === "cfa_approval" && (
+        {user.role === "hq" && project.stage === "cfa_approval" && (
           <section className="action-box">
-            <span className="eyebrow">CFA FUND RELEASE</span>
-            <h3>Release funds through IFD</h3>
+            <span className="eyebrow">OFFLINE CFA / IFD APPROVAL</span>
+            <h3>Record CFA's offline fund release through IFD</h3>
             <label>Release reference<input value={fundReference} onChange={(e) => setFundReference(e.target.value)} /></label>
-            <label>Amount released<input type="number" min="0.01" value={fundAmount} onChange={(e) => setFundAmount(e.target.value)} /></label>
-            <textarea value={fundRemarks} onChange={(e) => setFundRemarks(e.target.value)} placeholder="CFA release authority and IFD instructions…" />
-            <button className="button primary" onClick={() => submitWorkflowAction("cfa_release_funds", { reference: fundReference, amount: fundAmount, remarks: fundRemarks })}>Record CFA release and send to IFD</button>
+            <label>Amount approved<input type="number" min="0.01" value={fundAmount} onChange={(e) => setFundAmount(e.target.value)} /></label>
+            <textarea value={fundRemarks} onChange={(e) => setFundRemarks(e.target.value)} placeholder="Offline CFA approval and IFD reference details…" />
+            <button className="button primary" onClick={() => submitWorkflowAction("cfa_release_funds", { reference: fundReference, amount: fundAmount, remarks: fundRemarks })}>Record offline approval</button>
           </section>
         )}
-        {user.role === "ia" && project.stage === "ifd_review" && (
+        {user.role === "hq" && project.stage === "ifd_review" && (
           <section className="action-box">
-            <span className="eyebrow">IFD RELEASE CONFIRMATION</span>
-            <h3>Confirm CFA funds have been released</h3>
+            <span className="eyebrow">FINAL ACCEPTANCE</span>
+            <h3>Upload the final acceptance document after IFD approval</h3>
             {cfaRelease && (
               <p className="subtle">
                 Reference: {String(cfaRelease.data.reference)} · Amount: {money(Number(cfaRelease.data.amount))}
               </p>
             )}
-            <textarea value={fundRemarks} onChange={(e) => setFundRemarks(e.target.value)} placeholder="IFD confirmation and completion remarks…" />
-            <button className="button primary" onClick={() => submitWorkflowAction("release_funds", {
-              reference: String(cfaRelease?.data.reference ?? ""),
-              amount: String(cfaRelease?.data.amount ?? ""),
-              remarks: fundRemarks,
-            })}>Confirm release and complete project</button>
+            <input ref={workflowInput} type="file" accept="application/pdf,.pdf" />
+            <button className="button primary" onClick={() => uploadDocument("final_acceptance", workflowInput.current?.files?.[0])}>
+              Upload final acceptance and complete project
+            </button>
           </section>
         )}
         <section className="drawer-section">
@@ -1381,11 +1630,9 @@ function BidForm({ onSubmit }: { onSubmit: (body: object) => void }) {
   );
 }
 function CreateDialog({
-  role,
   onClose,
   onCreated,
 }: {
-  role: User["role"];
   onClose: () => void;
   onCreated: (p: Project) => void;
 }) {
@@ -1403,10 +1650,10 @@ function CreateDialog({
         <div className="drawer-head">
           <div>
             <span className="eyebrow">
-              DEPARTMENT DEMAND
+              OFFLINE DEPARTMENT LETTER
             </span>
             <h2>
-              Raise procurement demand
+              Create procurement project
             </h2>
           </div>
           <button className="close" onClick={onClose}>
@@ -1427,16 +1674,14 @@ function CreateDialog({
             onChange={(e) => setForm({ ...form, description: e.target.value })}
           />
         </label>
-        {role === "department" && (
-          <label>
-            Requirement PDF (optional, maximum 8 MB)
-            <input
-              type="file"
-              accept="application/pdf,.pdf"
-              onChange={(e) => setRequirementPdf(e.target.files?.[0] ?? null)}
-            />
-          </label>
-        )}
+        <label>
+          Department letter PDF (required, maximum 8 MB)
+          <input
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={(e) => setRequirementPdf(e.target.files?.[0] ?? null)}
+          />
+        </label>
         <div className="form-row">
           <label>
             Estimated value
@@ -1462,19 +1707,15 @@ function CreateDialog({
           className="button primary wide"
           onClick={async () => {
             try {
-              const pdfData = role === "department" && requirementPdf
-                ? await pdfToDataUrl(requirementPdf)
-                : undefined;
+              if (!requirementPdf)
+                throw new Error("Select the Department's letter PDF");
+              const pdfData = await pdfToDataUrl(requirementPdf);
               const x = await api<{ project: Project }>("/api/projects", {
                 method: "POST",
                 body: JSON.stringify({
                   ...form,
-                  ...(requirementPdf && pdfData
-                    ? {
-                        requirementName: requirementPdf.name,
-                        requirementPdf: pdfData,
-                      }
-                    : {}),
+                  requirementName: requirementPdf.name,
+                  requirementPdf: pdfData,
                 }),
               });
               onCreated(x.project);
@@ -1483,7 +1724,7 @@ function CreateDialog({
             }
           }}
         >
-          Submit demand
+          Create project
         </button>
       </section>
     </div>

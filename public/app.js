@@ -12,7 +12,7 @@ const roleLabel = {
   super_admin: "Super Admin",
   hq: "HQ Officer",
   committee: "Committee Member",
-  ia: "IA Wing",
+  ia: "IA (historical record)",
   vendor: "Vendor",
 };
 const esc = (value) =>

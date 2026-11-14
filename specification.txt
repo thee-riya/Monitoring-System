@@ -49,6 +49,9 @@ that role has an application login.
    - CS/SR has no application login. After CS/SR approves offline, the report
      and signed document return to Admin HQ; HQ uploads the CS/SR signed
      approval PDF. Tender processing begins only after this upload.
+   - If Admin HQ has a question during either offline approval handoff, it may
+     raise a query for Admin IA in the application. Admin IA can see and reply
+     to HQ's query in the project Trail.
 
 6. Draft tender
    - Admin HQ prepares and uploads the draft tender as a PDF and sends it only
@@ -58,6 +61,9 @@ that role has an application login.
    - Admin (IA) may review the draft and send suggestions to Admin HQ if needed.
    - Admin HQ incorporates any suggestions, uploads the final tender PDF and
      publishes it with a deadline.
+   - After publication, while the tender is being issued and bids are being
+     received, the due date is displayed; after it passes according to the
+     system clock, the reminder is highlighted red.
    - Admin HQ sends the final tender to participating vendors.
 
 8. Vendor activity (offline; do not implement)

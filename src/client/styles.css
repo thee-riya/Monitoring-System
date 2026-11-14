@@ -327,6 +327,29 @@ nav b {
   color: #9aa3b1;
   margin-top: 3px;
 }
+.tender-deadline {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  color: #566176;
+  background: #f7f8fb;
+  font-size: 11px;
+  font-weight: 700;
+}
+.project-card .tender-deadline {
+  margin-bottom: 12px;
+}
+.drawer-head .tender-deadline {
+  margin-top: 8px;
+}
+.tender-deadline.is-overdue {
+  border-color: #f0b8b2;
+  color: #a32920;
+  background: #fff0ee;
+}
 .stage-next-hint {
   display: block;
   max-width: 290px;

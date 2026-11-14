@@ -145,6 +145,39 @@ const stageNextStep = (stage: string) => {
   return steps[stage] ?? "";
 };
 
+const tenderDeadlineStages = new Set(["admin_issue_tender", "bid_submission"]);
+const tenderDeadlineStatus = (project: Project, systemTime: number) => {
+  if (!tenderDeadlineStages.has(project.stage)) return null;
+  const deadline = Date.parse(project.deadline);
+  if (!Number.isFinite(deadline)) return null;
+  return {
+    overdue: systemTime >= deadline,
+    label: new Date(deadline).toLocaleString(),
+  };
+};
+
+function TenderDeadline({
+  project,
+  systemTime,
+}: {
+  project: Project;
+  systemTime: number;
+}) {
+  const deadline = tenderDeadlineStatus(project, systemTime);
+  if (!deadline) return null;
+  return (
+    <p
+      className={`tender-deadline${deadline.overdue ? " is-overdue" : ""}`}
+      role="status"
+      aria-live="polite"
+    >
+      {deadline.overdue
+        ? `Overdue — bid deadline passed (${deadline.label})`
+        : `Bids due by ${deadline.label}`}
+    </p>
+  );
+}
+
 function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [form, setForm] = useState({
     username: "admin",
@@ -208,6 +241,7 @@ function Login({ onLogin }: { onLogin: (user: User) => void }) {
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [data, setData] = useState<Bootstrap | null>(null);
+  const [systemTime, setSystemTime] = useState(() => Date.now());
   const [view, setView] = useState("overview");
   const [selected, setSelected] = useState<Project | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -223,6 +257,10 @@ function App() {
         return refresh();
       })
       .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => setSystemTime(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
   }, []);
   if (!user)
     return (
@@ -352,9 +390,16 @@ function App() {
             data={data}
             onOpen={setSelected}
             onProjects={() => setView("projects")}
+            systemTime={systemTime}
           />
         )}
-        {view === "projects" && <Projects data={data} onOpen={setSelected} />}
+        {view === "projects" && (
+          <Projects
+            data={data}
+            onOpen={setSelected}
+            systemTime={systemTime}
+          />
+        )}
         {view === "workflow" && <Workflow data={data} />}
         {view === "people" && (
           <PeopleView
@@ -376,6 +421,7 @@ function App() {
           project={selected}
           data={data}
           user={user}
+          systemTime={systemTime}
           onClose={() => setSelected(null)}
           onRefresh={async () => {
             const latest = await refresh();
@@ -402,10 +448,12 @@ function Overview({
   data,
   onOpen,
   onProjects,
+  systemTime,
 }: {
   data: Bootstrap;
   onOpen: (p: Project) => void;
   onProjects: () => void;
+  systemTime: number;
 }) {
   const openQueries = data.projects.reduce(
     (n, p) => n + p.queries.filter((q) => q.status === "open").length,
@@ -449,7 +497,12 @@ function Overview({
       </section>
       <div className="project-grid">
         {data.projects.slice(0, 6).map((p) => (
-          <ProjectCard key={p.id} project={p} onOpen={onOpen} />
+          <ProjectCard
+            key={p.id}
+            project={p}
+            onOpen={onOpen}
+            systemTime={systemTime}
+          />
         ))}
       </div>
     </>
@@ -478,14 +531,21 @@ function Metric({
 function Projects({
   data,
   onOpen,
+  systemTime,
 }: {
   data: Bootstrap;
   onOpen: (p: Project) => void;
+  systemTime: number;
 }) {
   return (
     <div className="project-grid">
       {data.projects.map((p) => (
-        <ProjectCard key={p.id} project={p} onOpen={onOpen} />
+        <ProjectCard
+          key={p.id}
+          project={p}
+          onOpen={onOpen}
+          systemTime={systemTime}
+        />
       ))}
     </div>
   );
@@ -493,9 +553,11 @@ function Projects({
 function ProjectCard({
   project,
   onOpen,
+  systemTime,
 }: {
   project: Project;
   onOpen: (p: Project) => void;
+  systemTime: number;
 }) {
   const percent = Math.round(
     (Math.max(0, stageOrder.indexOf(project.stage)) /
@@ -526,6 +588,7 @@ function ProjectCard({
           <small>Estimated value</small>
         </span>
       </div>
+      <TenderDeadline project={project} systemTime={systemTime} />
       <button className="button secondary wide" onClick={() => onOpen(project)}>
         Open workspace <span>→</span>
       </button>
@@ -757,12 +820,14 @@ function ProjectDrawer({
   project,
   data,
   user,
+  systemTime,
   onClose,
   onRefresh,
 }: {
   project: Project;
   data: Bootstrap;
   user: User;
+  systemTime: number;
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }) {
@@ -912,8 +977,11 @@ function ProjectDrawer({
             <span className="project-id">{project.id}</span>
             <h2>{project.title}</h2>
             <p className="subtle">
-              {project.stageLabel} · Due {project.deadline}
+              {project.stageLabel}
+              {!tenderDeadlineStatus(project, systemTime) &&
+                ` · Due ${project.deadline}`}
             </p>
+            <TenderDeadline project={project} systemTime={systemTime} />
             <small className="stage-next-hint">
               {stageNextStep(project.stage)}
             </small>

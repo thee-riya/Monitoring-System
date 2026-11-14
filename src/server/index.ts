@@ -44,8 +44,10 @@ const queryResponderRoles: Record<string, string[]> = {
   demand_submission: ["admin"],
   tsc_approval: ["as_ia", "admin"],
   as_review: ["as_ia", "admin"],
-  dgs_ia_review: ["hq"],
+  dgs_ia_review: ["hq", "admin"],
   hq_review: ["hq", "admin"],
+  hq_after_dgs: ["hq", "admin"],
+  cs_sr_review: ["hq", "admin"],
   tec_approval: ["admin", "hq"],
 };
 const formationDocumentHandoffs: Record<
